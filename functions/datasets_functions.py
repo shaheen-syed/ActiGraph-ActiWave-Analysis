@@ -13,7 +13,7 @@ import numpy as np
 from functions.helper_functions import dictionary_values_bytes_to_string
 from functions.hdf5_functions import read_dataset_from_group, read_metadata_from_group_dataset
 from functions.epoch_functions import create_epoch_time_array, convert_epoch_data
-from functions.autocalibrate_functions import calibrate_accelerometer_data, parse_calibration_weights
+from functions.autocalibrate_functions_2 import calibrate_accelerometer_data, parse_calibration_weights
 
 
 def get_actigraph_acc_data(subject, hdf5_file, autocalibrate = False):

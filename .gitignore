@@ -1,7 +1,11 @@
 .vscode
+.DS_Store
+*.pyc
+__pycache__
 drafts/
 files/
 labels/
 logs/
 models/
 plots/
+matlab/

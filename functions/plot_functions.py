@@ -298,7 +298,7 @@ def plot_raw_and_epoch_activity_data_by_day(data, plot_folder, subject, plot_raw
 	epoch_y_max = int(round(max([group['VMU - 60 EPOCH'].max() for name, group in data]),-3))
 	
 	# loop over the data (day by day)
-	for name, group in data:
+	for _, group in data:
 	
 		# plot epoch 10S VMU data
 		axs[i].plot(group['VMU - 10 EPOCH'].dropna(), label = 'VMU - 10 EPOCH')
@@ -987,13 +987,15 @@ def plot_counts(acc_30hz_x, epoch_x, epoch_x_predicted, y_hat_metrics, y_hat_fil
 	plt.close()
 
 
-def plot_classification_performance(spec, prec, f1, plot_folder = os.path.join('plots', 'test')):
+def plot_classification_performance(acc, spec, prec, f1, plot_folder = os.path.join('plots', 'test')):
 
 	"""
 	Plot classification performance of non wear algorithms to true non wear time
 
 	Parameters
 	----------
+	acc: np.array(samples, 4)
+		numpy array with accuracy data
 	spec: np.array(samples, 4)
 		numpy array with specificity data
 	prec: np.array(samples, 4)
@@ -1003,17 +1005,41 @@ def plot_classification_performance(spec, prec, f1, plot_folder = os.path.join('
 	"""
 
 	# setting up the plot environment
-	fig, axs = plt.subplots(2, 2, figsize=(20, 20))
+	fig, axs = plt.subplots(2, 2, figsize=(10, 10))
 	axs = axs.ravel()
 
 	# define the labels of the array columns
 	col_to_label = {0 : 'Hecht', 1 : 'Troiano', 2 : 'Choi', 3 : 'Hees'}
+	data_to_label = {0 : 'Accuracy', 1 : 'Specificity', 2 : 'Precision', 3 : 'F1'}
 
-	# plot specificty
-	for column in range(spec.shape[1]):
+	# data to plot
+	plot_data = [acc, spec, prec, f1]
 
-		# plot each column of data with associated label
-		axs[0].plot(spec[:,column], label = col_to_label[column])
+	for i, data in enumerate(plot_data):
+
+		# plot specificty
+		for column in range(data.shape[1]):
+			# plot each column of data with associated label
+			axs[i].plot(data[:,column], label = col_to_label[column])
+		
+		axs[i].set_title(data_to_label[i])
+
+	# # plot precision
+	# for column in range(prec.shape[1]):
+	# 	# plot each column of data with associated label
+	# 	axs[1].plot(prec[:,column], label = col_to_label[column])
+
+	# # plot f1
+	# for column in range(f1.shape[1]):
+	# 	# plot each column of data with associated label
+	# 	axs[2].plot(f1[:,column], label = col_to_label[column])
+
+	# plot additional elements on axes
+	for ax in axs:
+		# set the legend
+		ax.legend(loc='best', prop={'size': 10})
+		# make sure the x-axis has no white space
+		ax.margins(x = 0)
 
 
 	# crop white space
