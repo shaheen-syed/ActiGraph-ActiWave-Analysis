@@ -210,16 +210,16 @@ if __name__ == "__main__":
 	set_end(tic, process)
 
 
-"""
-	Code to use for matlab
+
+	# # Code to use for matlab
 
 	# import matlab.engine
 
-	# start matlabe engine (use when wanting to extract activity from matlab scripts)
+	# # start matlabe engine (use when wanting to extract activity from matlab scripts)
 	# matlab = matlab.engine.start_matlab()
 	# matlab.addpath('matlab',nargout=0)
 
-	# use below if you want to execute the matlab script
+	# # use below if you want to execute the matlab script
 	# log_data, log_time = matlab.ExtractBin(log_bin, nargout=2)
 
 	# # convert to numpy (only when using matlab code)
@@ -227,5 +227,3 @@ if __name__ == "__main__":
 	# log_time = np.array(log_time._data, dtype='int').reshape(log_time.size, order='F')
 
 	# info_data = matlab.ExtractInfo(info_txt, nargout=1)
-
-"""

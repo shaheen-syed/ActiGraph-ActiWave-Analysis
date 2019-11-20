@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 import sklearn
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split, KFold, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn import svm
 from sklearn.externals import joblib
@@ -22,6 +22,7 @@ from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import AdaBoostClassifier
+	
 
 """
 	IMPORTED FUNCTIONS
@@ -29,7 +30,7 @@ from sklearn.ensemble import AdaBoostClassifier
 from functions.helper_functions import save_pickle, save_dic_to_csv
 
 
-def create_train_test_split(X, Y, test_size = .2, shuffle = True, random_state = 42):
+def create_train_test_split(X, Y, test_size = .2, shuffle = True, random_state = 42, **kwargs):
 	"""
 	Create a training and test split of the data
 	https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
@@ -49,8 +50,32 @@ def create_train_test_split(X, Y, test_size = .2, shuffle = True, random_state =
 	"""
 
 	# split data into train and test
-	return train_test_split(X, Y, test_size = test_size, shuffle = shuffle, random_state = random_state)
+	return train_test_split(X, Y, test_size = test_size, shuffle = shuffle, random_state = random_state, **kwargs)
 
+def return_k_folds(n_splits, shuffle = True, random_state = 42):
+	"""
+	K-Folds cross-validator
+	https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.KFold.html
+
+	Provides train/test indices to split data in train/test sets. Split dataset into k consecutive folds (without shuffling by default).
+
+	Each fold is then used once as a validation while the k - 1 remaining folds form the training set.
+	"""
+
+	return KFold(n_splits = n_splits, shuffle = shuffle, random_state = random_state)
+
+
+def return_stratified_k_folds(n_splits, shuffle = False, random_state = 42):
+	"""
+	Stratified K-Folds cross-validator
+	https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedKFold.html
+
+	Provides train/test indices to split data in train/test sets.
+
+	This cross-validation object is a variation of KFold that returns stratified folds. The folds are made by preserving the percentage of samples for each class.
+	"""
+	return StratifiedKFold(n_splits = n_splits, shuffle = shuffle, random_state = random_state)
+	
 
 def calculate_precision_recall_f1_support(y, y_hat, **kwargs):
 	"""
@@ -499,6 +524,59 @@ def predict_class(classifier, X):
 	"""
 
 	return classifier.predict(X)
+
+
+def calculate_classification_performance(tn, fp, fn, tp):
+	"""
+	Calculate classification performance measures such as precision, recall, f1 from a binary confusion matrix output
+
+	Parameters
+	----------
+	tn : int
+		true negatives
+	fp : int
+		false positives
+	fn : int
+		false negatives
+	tp : int
+		true positives
+
+	Returns
+	---------
+	classification_performance : dict()
+		dictionary with precision, specificity, recall, accuracy, f1, ppv, npv
+	"""
+
+	# calculate precision
+	precision = tp / (tp + fp)
+	# calculate specificity
+	specificity = tn / (fp + tn)
+	# calculate recall
+	recall = tp / (tp + fn)
+	# calculate accuracy
+	accuracy = (tp + tn) / (tp + tn + fp + fn) 
+	# calculate f1
+	f1 = 2 * tp / (2 * tp + fp + fn)
+	# calculate ppv positive predictive value
+	ppv = tp / (tp + fp)
+	# calculate npv negative predictive value
+	npv = tn / (tn + fn)
+
+	# create dictionary for meta data
+	classification_performance = {	'tn' : tn,
+									'fp' : fp,
+									'fn' : fn,
+									'tp' : tp,
+									'accuracy' : accuracy,
+									'precision' : precision,
+									'specificity' : specificity,
+									'recall' : recall,
+									'f1' : f1,
+									'ppv' : ppv,
+									'npv' : npv
+									}
+	
+	return classification_performance
 
 
 # """

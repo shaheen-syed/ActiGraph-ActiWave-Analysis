@@ -26,7 +26,7 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		sample frequency in hertz. Indicates the number of samples per 1 second. Default to 100 for 100hz. The sample frequency is necessary to know how many samples there are in a specific window.
 		So let's say we have a window of 15 minutes, then there are hz * 60 * 15 samples
 	min_non_wear_time_window : int (optional)
-		minimum window lenght in minutes to be classified as non-wear time
+		minimum window length in minutes to be classified as non-wear time
 	window_overlap : int (optional)
 		basically the sliding window that progresses over the acceleration data. Defaults to 15 minutes.
 	std_mg_threshold : float (optional)

@@ -64,7 +64,7 @@ def troiano_2007_calculate_non_wear_time(data, time, activity_threshold = 0, min
 		logging.error('Epoch data contains {} samples, which is less than the {} minimum required samples'.format(len(data), min_period_len))
 
 	# create non wear vector as numpy array with ones. now we only need to add the zeros which are the non-wear time segments
-	non_wear_vector = np.ones((len(data),1), dtype = np.int16)
+	non_wear_vector = np.ones((len(data),1), dtype = np.uint8)
 
 	"""
 		ADJUST THE COUNTS IF NECESSARY
@@ -163,6 +163,6 @@ def troiano_2007_calculate_non_wear_time(data, time, activity_threshold = 0, min
 			logging.debug('Epoch values \n{}'.format(data[row[0]:row[1]].T))
 		
 		# set the non wear vector according to start and end
-		non_wear_vector[row[0]:row[1]] = 0			
+		non_wear_vector[row[0]:row[1]] = 0
 
 	return non_wear_vector

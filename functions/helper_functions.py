@@ -83,6 +83,8 @@ def set_start():
 		time the program starts
 	process : object
 		process id
+	logger : logging object
+		logger that outputs to console and save log file to disk
 	"""
 
 	# create logging to console
@@ -281,7 +283,7 @@ def save_csv(data, name, folder):
 		exit(1)
 
 
-def readCSV(filename, folder = None):
+def read_csv(filename, folder = None):
 	"""
 	Read CSV file and return as a list
 
@@ -301,7 +303,7 @@ def readCSV(filename, folder = None):
 		csv.field_size_limit(sys.maxsize)
 		
 		# open the filename
-		with open(filename, 'rb') as f:
+		with open(filename, 'rt') as f:
 			# create the reader
 			reader = csv.reader(f)
 			# return csv as list
@@ -531,3 +533,101 @@ def dictionary_values_bytes_to_string(dictionary):
 			dictionary[key] = value.decode('utf-8')
 
 	return dictionary
+
+def get_subjects_with_invalid_data():
+	"""
+	Return a list of subjects that need to be excluded from further analysis. These subjects have measurements error in their data; could be caused by faulty sensor
+	or improper placement on the subject
+
+	Returns
+	---------
+	invalid_subjects : list
+		list of subjects that need to be excluded
+	"""
+
+	# subjects that should be excluded from further analysis due to invalid data
+	invalid_subjects = ['90013013', # actiwave data invalid
+						'90022619',# actiwave data invalid
+						'90097429', # actiwave z axis too high
+						'90107724', # actiwave data flat
+						'90265628', # actiwave data flat
+						'90277429', # actiwave data measurement errors in beginning
+						'90352827', # actiwave y and z invalid
+						'90358126', # actiwave data flat
+						'90359935', # actiwave data measurement errors
+						'90551323', # actiwave flat
+						'90631928', # actiwave measurements error
+						'90821020', # actiwave measurements error
+						'90884635', # actiwave measurements error
+						'90936734', # actiwave flat
+						'90952429', # actiwave measurements error
+						'92108626', # actiwave flat
+						'92280425', # actiwave measurements error
+						'92327831', # actiwave flat
+						'92355428', # actiwave flat
+						'92504323', # actiwave measurements error
+						'93208931', # actiwave measurements error
+						'90165829'	# no epoch data
+						]
+
+	return invalid_subjects
+
+
+def get_subject_counters_for_correction(subject):
+
+	"""
+	get a list of subjects counters to correct. The counter represents a candidate segment for non wear time. If subject is listed here, it means that the classifier has inferred an incorrect label for a specific segment.
+	These segments are indicated by their counter, with the first segment being 0 etc. If subject + counter is part of the dictionary, the labels will be flipped typically. So what is inferred as non wear time, need to be wear time and
+	vice versa.
+
+	IMPORTANT : counters are basically non wear segments, but changing the parameter values when finding segments, i.e. calling function find_candidate_non_wear_segments_from_raw, can provide different segments and thus different counters.
+	counters here are based on std_threshold = 0.004, min_segment_length = 1, sliding_window = 1
+
+	Parameters
+	---------
+	subject : string
+		subject ID
+	
+	Returns
+	--------
+	subject_counter_to_correct : list or None
+		if subject is part of the dictionary, it returns a list with counters to correct for. If the subject is not part of the dictionary, it returns None.
+	"""
+
+	subject_counter_to_correct = {	'90086831' : [0,1,2,3,4,5,6,7],
+									'91864028' : [38],
+									'90974029' : [4],
+									'90173929' : [0],
+									'90187631' : [0],
+									'90475732' : [0],
+									'90656834' : [2],
+									'90897538' : [25],
+									'92460728' : [0],
+									'92987439' : [1]
+									}
+
+	# return counters to correct, if not part of dictionary, then it returs None; meaning no correction to apply
+	return subject_counter_to_correct.get(subject)
+
+def convert_short_code_to_long(short_code):
+
+	labels = {	'T' : 'Threshold (VMU)', 
+				'I' : 'Window size (mins)', 
+				'M' : 'Allowed #spikes in window',
+				'AT' : 'Minimum spike threshold (counts)', 
+				'MPL' : 'Minimum interval (mins)', 
+				'ST' : 'Allowed #spikes',
+				'SS' : 'Maximum spike threshold (counts)',
+				'MWL' : 'Window size (mins)',
+				'WST' : 'Allowed #spikes in window',
+				'MW' : 'Minimum interval (mins)', 
+				'WO' : 'Window overlap',
+				'StdT' : 'Std. threshold (mg)',
+				'StdA' : 'Std. min. #axes',
+				'VT' : 'Value threshold (mg)',
+				'VA' : 'Value min. #axes',
+				'VM' : 'Use VMU'
+			}
+	
+	return labels[short_code]
+				

@@ -13,7 +13,7 @@ from joblib import delayed
 """
 	IMPORTED FUNCTIONS
 """
-from functions.helper_functions import set_start, set_end, calculate_vector_magnitude
+from functions.helper_functions import set_start, set_end, calculate_vector_magnitude, get_subjects_with_invalid_data, load_pickle
 from functions.hdf5_functions import get_all_subjects_hdf5, read_metadata_from_group, read_dataset_from_group, save_data_to_group_hdf5, get_datasets_from_group
 from functions.datasets_functions import get_actigraph_acc_data, get_actiwave_acc_data, get_actiwave_hr_data, get_actigraph_epoch_data, get_actigraph_epoch_60_data
 from functions.plot_functions import plot_non_wear_algorithms
@@ -26,10 +26,10 @@ from algorithms.non_wear_time.hees_2013 import hees_2013_calculate_non_wear_time
 	GLOBAL VARIABLES
 """
 ACTIGRAPH_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIGRAPH_TU7.hdf5')
-ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
+# ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
+ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'users', 'shaheensyed', 'hdf5', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
 
-
-def batch_process_non_wear_algorithm(algorithm, limit = None, skip_n = 0, use_parallel = False, num_jobs = cpu_count(), save_hdf5 = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE):
+def batch_process_non_wear_algorithm(algorithm, limit = None, skip_n = 0, use_parallel = True, num_jobs = cpu_count(), save_hdf5 = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE):
 	"""
 	Batch process finding non-wear time based on the following algorithms:
 		- hecht_2009_triaxial_calculate_non_wear_time
@@ -53,8 +53,8 @@ def batch_process_non_wear_algorithm(algorithm, limit = None, skip_n = 0, use_pa
 		location of HDF5 file to save data to
 	"""
 
-	# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
-	subjects = get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[0 + skip_n:limit]
+	# get all the subjects from the hdf5 file and remove subjects with invalid data
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()][0 + skip_n:limit]
 
 	logging.info('Start batch processing estimating non-wear time based on {}'.format(algorithm.__name__))
 
@@ -155,7 +155,7 @@ def process_hecht_2009_triaxial(subject, save_hdf5, idx = 1, total = 1, epoch_da
 		"""
 			SAVE TO HDF5 FILE
 		"""
-		save_data_to_group_hdf5(group = subject, data = combined_data, data_name = 'hecht_2009_3_axes_non_wear_data', overwrite = True, create_group_if_not_exists = False, hdf5_file = save_hdf5)
+		save_data_to_group_hdf5(group = subject, data = combined_data, data_name = 'hecht_2009_3_axes_non_wear_data', overwrite = True, create_group_if_not_exists = True, hdf5_file = save_hdf5)
 
 	else:
 		logging.warning('Subject {} has no corresponding epoch data, skipping...'.format(subject))
@@ -237,7 +237,7 @@ def process_troiano_2007(subject, save_hdf5, idx = 1, total = 1, epoch_dataset =
 			SAVE TO HDF5 FILE
 		"""
 	
-		save_data_to_group_hdf5(group = subject, data = combined_data, data_name = 'troiano_2007_non_wear_data', overwrite = True, create_group_if_not_exists = False, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+		save_data_to_group_hdf5(group = subject, data = combined_data, data_name = 'troiano_2007_non_wear_data', overwrite = True, create_group_if_not_exists = True, hdf5_file = save_hdf5)
 
 	else:
 		logging.warning('Subject {} has no corresponding epoch data, skipping...'.format(subject))
@@ -316,13 +316,13 @@ def process_choi_2011(subject, save_hdf5, idx = 1, total = 1, epoch_dataset = 'e
 			SAVE TO HDF5 FILE
 		"""
 		
-		save_data_to_group_hdf5(group = subject, data = combined_data, data_name = 'choi_2011_non_wear_data', overwrite = True, create_group_if_not_exists = False, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+		save_data_to_group_hdf5(group = subject, data = combined_data, data_name = 'choi_2011_non_wear_data', overwrite = True, create_group_if_not_exists = False, hdf5_file = save_hdf5)
 
 	else:
 		logging.warning('Subject {} has no corresponding epoch data, skipping...'.format(subject))
 
 
-def process_hees_2013(subject, save_hdf5,  idx = 1, total = 1):
+def process_hees_2013(subject, save_hdf5, idx = 1, total = 1):
 	"""
 	Estimation of non-wear time periods based on Hees 2013 paper
 
@@ -371,8 +371,8 @@ def batch_process_plot_non_wear_algorithms(limit = None, skip_n = 0, plot_folder
 	"""
 
 	# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
-	subjects = get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[0 + skip_n:limit]
-	
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()][0 + skip_n:limit]
+
 	# loop over the subjects
 	for i, subject in enumerate(subjects):
 
@@ -383,7 +383,7 @@ def batch_process_plot_non_wear_algorithms(limit = None, skip_n = 0, plot_folder
 		process_plot_non_wear_algorithms(subject, plot_folder)
 
 
-def process_plot_non_wear_algorithms(subject, plot_folder, epoch_dataset = 'epoch10'):
+def process_plot_non_wear_algorithms(subject, plot_folder, epoch_dataset = 'epoch10', use_optimized_parameters = True, optimized_data_folder = os.path.join('files', 'grid-search', 'final')):
 	"""
 	Plot acceleration data from actigraph and actiwave including the 4 non wear methods and the true non wear time
 
@@ -403,7 +403,16 @@ def process_plot_non_wear_algorithms(subject, plot_folder, epoch_dataset = 'epoc
 		name of hdf5 dataset that contains 10s epoch data
 	"""
 
-
+	optimized_parameters = {}
+	classification = 'f1'
+	for nw_method in ['hecht', 'troiano', 'choi', 'hees']:
+		
+		# load data
+		data = load_pickle('grid-search-results-{}'.format(nw_method), optimized_data_folder)
+		# obtain top parameters
+		top_results = sorted(data.items(), key = lambda item: item[1][classification], reverse = True)[0]
+		optimized_parameters[nw_method] = top_results[0]
+	
 	"""
 		GET ACTIGRAPH DATA
 	"""
@@ -436,7 +445,7 @@ def process_plot_non_wear_algorithms(subject, plot_folder, epoch_dataset = 'epoc
 		"""
 			GET NON WEAR TIME
 		"""
-
+		
 		# true non wear time
 		true_non_wear_time = read_dataset_from_group(group_name = subject, dataset = 'actigraph_true_non_wear', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) 
 		# hecht 3-axes non wear time
@@ -447,8 +456,44 @@ def process_plot_non_wear_algorithms(subject, plot_folder, epoch_dataset = 'epoc
 		choi_non_wear_time = read_dataset_from_group(group_name = subject, dataset = 'choi_2011_non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) 
 		# hees non wear time
 		hees_non_wear_time = read_dataset_from_group(group_name = subject, dataset = 'hees_2013_non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+	
+		# if set to True, then update the matrix column with non-wear data
+		if use_optimized_parameters:
+	
+			"""
+				READ 60S EPOCH DATA
+			"""
+			subject_epoch_data = read_dataset_from_group(group_name = subject, dataset = 'epoch60', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE).astype('float16')
+			subject_epoch_data_vmu = calculate_vector_magnitude(subject_epoch_data, minus_one = False, round_negative_to_zero = False)
 
+			"""
+				HECHT
+			"""
+			# unpack variables
+			t, i, m = optimized_parameters['hecht'].split('-')
+			# use optimized parameters
+			hecht_3_non_wear_time[:,1] = hecht_2009_triaxial_calculate_non_wear_time(data = subject_epoch_data_vmu, epoch_sec = 60, threshold = int(t), time_interval_mins = int(i), min_count = int(m))[:,0]
+			
+			"""
+				TROIANO
+			"""
+			# unpack variables
+			at, mpl, st, ss, vm = optimized_parameters['troiano'].split('-')
+			# use optimized variables to calculate non wear vector
+			troiano_non_wear_time[:,1] = troiano_2007_calculate_non_wear_time(subject_epoch_data, None, activity_threshold = int(at), min_period_len = int(mpl), spike_tolerance = int(st), spike_stoplevel = int(ss), use_vector_magnitude = eval(vm), print_output = False)[:,0]
+			
+			"""
+				CHOI
+			"""
+			at, mpl, st, mwl, wst, vm = optimized_parameters['choi'].split('-')
+			choi_non_wear_time[:,1] = choi_2011_calculate_non_wear_time(subject_epoch_data, None, activity_threshold = int(at), min_period_len = int(mpl), spike_tolerance = int(st),  min_window_len = int(mwl), window_spike_tolerance = int(wst), use_vector_magnitude = eval(vm), print_output = False)[:,0]
 
+			"""
+				HEES
+			"""
+			mw, wo, st, sa, vt, va = optimized_parameters['hees'].split('-')
+			hees_non_wear_time = hees_2013_calculate_non_wear_time(actigraph_acc, hz = 100, min_non_wear_time_window = int(mw), window_overlap = int(wo), std_mg_threshold = float(st), std_min_num_axes = int(sa) , value_range_mg_threshold = float(vt), value_range_min_num_axes = int(va))
+			
 		"""
 			CREATING THE DATAFRAMES
 		"""
@@ -488,19 +533,19 @@ if __name__ == "__main__":
 	tic, process, logging = set_start()
 
 	# 1) batch process Hecht 2009 non-wear method
-	batch_process_non_wear_algorithm(algorithm = process_hecht_2009_triaxial)
+	# batch_process_non_wear_algorithm(algorithm = process_hecht_2009_triaxial)
 
-	# 2) batch process Troiano 2007 non-wear method
-	batch_process_non_wear_algorithm(algorithm = process_troiano_2007)
+	# # 2) batch process Troiano 2007 non-wear method
+	# batch_process_non_wear_algorithm(algorithm = process_troiano_2007)
 
-	# 3) batch process Choi 2011 non-wear method
-	batch_process_non_wear_algorithm(algorithm = process_choi_2011)
+	# # 3) batch process Choi 2011 non-wear method
+	# batch_process_non_wear_algorithm(algorithm = process_choi_2011)
 
-	# 4) batch process Hees 2013 non-wear method
-	batch_process_non_wear_algorithm(algorithm = process_hees_2013)
+	# # 4) batch process Hees 2013 non-wear method
+	# batch_process_non_wear_algorithm(algorithm = process_hees_2013)
 	
 	# 5) batch process the plotting of the non-wear algorithms including true non-wear time
-	batch_process_plot_non_wear_algorithms(skip_n = 103)
+	batch_process_plot_non_wear_algorithms()
 
 	# print time and memory
 	set_end(tic, process)

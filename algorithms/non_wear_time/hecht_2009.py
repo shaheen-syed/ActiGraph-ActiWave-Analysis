@@ -7,7 +7,7 @@ import numpy as np
 import logging
 
 
-def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold = 5, time_interval_mins = 20):
+def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold = 5, time_interval_mins = 20, min_count = 2):
 	"""
 	Calculate the non-wear time from a data array that contains the vector magnitude (VMU) according to Hecht 2009 algorithm
 
@@ -26,12 +26,15 @@ def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold 
 		threshold value for Hecht non-wear time algorithm. Defaults to 5 VMU
 	time_interval_mins : int (optional)
 		time interval threshold for hecht non-wear time algorithm. Defaults to 20 min
-	
+	min_count : int (optional)
+		threshold for following and preceding window to check if at least min_count >= threshold
+
 	Returns
 	---------
 	non_wear_time_vector : np.array((n_samples, 1))
 		numpy array with non wear time encoded as 0, and wear time encoded as 1.
 	"""
+
 
 	# calculate the sliding windows size based on incoming epoch data and time interval to determine non-wear-time
 	time_window = time_interval_mins / (epoch_sec / 60.)
@@ -55,23 +58,23 @@ def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold 
 
 
 			# of the following time_interval_mins (e.g. 20 mins), do at least 2 have a VMU of greater than threshold (e.g. 5)
-			if not check_following_time_interval_threshold(data, i, time_window, threshold):
+			if not _check_following_time_interval_threshold(data, i, time_window, threshold, min_count):
 
 				# of the proceeding time_interval_minutes do at least 2 have VMU of greater than 5
-				if not check_preceding_time_interval_threshold(data, i, time_window, threshold):
+				if not _check_preceding_time_interval_threshold(data, i, time_window, threshold, min_count):
 
 					# this is considered non-wear time, update data of the right row
 					non_wear_time_vector[i] = 0
 
 		else:
 			# VMU is NOT great than threshold
-			if not check_following_time_interval_threshold(data, i,time_window, threshold):
+			if not _check_following_time_interval_threshold(data, i,time_window, threshold, min_count):
 
 				# this is considered non-wear time
 				non_wear_time_vector[i] = 0
 
 			else:
-				if not check_preceding_time_interval_threshold(data, i, time_window, threshold):
+				if not _check_preceding_time_interval_threshold(data, i, time_window, threshold, min_count):
 
 					# this is considered non-wear time
 					non_wear_time_vector[i] = 0
@@ -79,7 +82,7 @@ def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold 
 	return non_wear_time_vector
 
 
-def check_following_time_interval_threshold(data, index, time_window, threshold, min_count = 2):
+def _check_following_time_interval_threshold(data, index, time_window, threshold, min_count):
 
 	"""
 	Part of Hecht's (2009) non-wear time algorithm
@@ -95,7 +98,7 @@ def check_following_time_interval_threshold(data, index, time_window, threshold,
 	return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
 
 
-def check_preceding_time_interval_threshold(data, index, time_window, threshold, min_count = 2):
+def _check_preceding_time_interval_threshold(data, index, time_window, threshold, min_count):
 
 	"""
 	Part of Hecht's (2009) non-wear time algorithm

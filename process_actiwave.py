@@ -18,15 +18,17 @@ from scipy.stats import norm
 """
 	IMPORTED FUNCTIONS
 """
-from functions.helper_functions import set_start, set_end, dictionary_values_bytes_to_string, create_directory, read_directory, calculate_vector_magnitude, save_pickle, get_random_number_between, load_pickle
+from functions.helper_functions import 	set_start, set_end, dictionary_values_bytes_to_string, create_directory, read_directory, calculate_vector_magnitude, \
+										save_pickle, get_random_number_between, load_pickle, get_subject_counters_for_correction, get_subjects_with_invalid_data,\
+										read_csv, convert_short_code_to_long
 from functions.hdf5_functions import get_all_subjects_hdf5, read_metadata_from_group, read_dataset_from_group, read_metadata_from_group_dataset, save_multi_data_to_group_hdf5, save_meta_data_to_group_dataset, save_data_to_group_hdf5
 from functions.actiwave_functions import create_actiwave_time_vector
-from functions.plot_functions import plot_classification_performance
+from functions.plot_functions import plot_classification_results, plot_time_distribution, plot_nw_scenarios, plot_nw_distribution
 from functions.gt3x_functions import rescale_log_data, create_time_array
 from functions.raw_non_wear_functions import find_candidate_non_wear_segments_from_raw, find_consecutive_index_ranges
 from functions.autocalibrate_functions_2 import get_calibration_weights, return_default_weights, find_segments_moving_averages
 from functions.statistical_functions import calculate_lower_bound_Keogh, signal_to_noise
-from functions.ml_functions import execute_gridsearch_cv, get_classifier_weights, predict_class, get_confusion_matrix, calculate_precision_recall_f1_support, calculate_roc_curve, calculate_roc_auc
+from functions.ml_functions import execute_gridsearch_cv, predict_class, get_confusion_matrix, calculate_classification_performance
 from functions.datasets_functions import get_actigraph_acc_data, get_actiwave_acc_data, get_actiwave_hr_data, get_actiwave_ecg_data
 from functions.signal_processing_functions import apply_butterworth_filter, resample_acceleration
 from functions.dl_functions import train_mlp_classifier
@@ -38,13 +40,12 @@ from functions.dl_functions import train_mlp_classifier
 # local
 ACTIGRAPH_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIGRAPH_TU7.hdf5')
 ACTIWAVE_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIWAVE_TU7.hdf5')
-ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
-
+# ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
+ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'users', 'shaheensyed', 'hdf5', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
 # server
 # ACTIGRAPH_HDF5_FILE = os.path.join(os.sep, 'media', 'shaheen', 'LaCie_server', 'ACTIGRAPH_TU7.hdf5')
 # ACTIWAVE_HDF5_FILE = os.path.join(os.sep, 'media', 'shaheen',  'LaCie_server', 'ACTIWAVE_TU7.hdf5')
 # ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'media', 'shaheen', 'LaCie_server', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
-
 
 def batch_process_mapping_actiwave_on_actigraph(use_parallel = True, num_jobs = cpu_count(), limit = None, skip_n = 0, skip_processed_subjects = True):
 	"""
@@ -978,19 +979,8 @@ def batch_process_detect_true_non_wear_time(limit = None, skip_n = 0, use_parall
 	# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
 	subjects = get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[0 + skip_n:limit]
 
-	# # exclude subjects that have issues with their data
-	# exclude_subjecs = [	
-	# 					'90013013',	# device reading failure
-	# 					'90022619', # subject has no actiwave acceleration data
-	# 					'90107724', # subject has no actiwave acceleration data
-	# 					'90086831', # actigraph acceleration of 1 axis is too high
-	# 					'90097429', # actiwave too high acc value
-	# 					'90265628', # actiwave no acc data
-	# 					'90277429', # measurement error
-	# 					]
-
-	# # filter subjects for excluded subjects
-	# subjects = [x for x in subjects if x not in exclude_subjecs]
+	# exclude subjects that have issues with their data
+	subjects = [s for s in subjects if s not in get_subjects_with_invalid_data()]
 
 	# load machine learning classifier
 	classifier = load_pickle(ml_classifier)
@@ -1019,7 +1009,7 @@ def batch_process_detect_true_non_wear_time(limit = None, skip_n = 0, use_parall
 			process_detect_true_non_wear_time(subject = subject, classifier = classifier, idx = i, total = len(subjects))
 
 
-def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, autocalibrate = False ):
+def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, perform_autocalibration = False, perform_correction = True):
 	"""
 	Detect non-wear time in actigraph acceleration data by including actiwave acceleration data
 	basically when actigraph shows no activity, but actiwave records activity, there is a mismatch between the two signals
@@ -1041,8 +1031,10 @@ def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, a
 		index tracker for progress
 	total : int (optional)
 		total number of files to process, used to monitor status
-	autocalibrate : Boolean (optional)
+	perform_autocalibration : Boolean (optional)
 		if set to True, apply autocalibration of acceleration Y, X, and Z axes
+	perform_correction : Boolean (optional)
+		if set to True, subjects with long candidate non wear sequence that typically gets misclassified as wear time will be corrected
 	"""
 
 	# verbose
@@ -1053,11 +1045,11 @@ def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, a
 	"""
 
 	# actigraph acceleration data
-	actigraph_acc, actigraph_meta_data, actigraph_time = get_actigraph_acc_data(subject, ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE, autocalibrate)
+	actigraph_acc, actigraph_meta_data, actigraph_time = get_actigraph_acc_data(subject = subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE, autocalibrate = perform_autocalibration)
 	# actiwave acceleration data
-	actiwave_acc, _, actiwave_time = get_actiwave_acc_data(subject, ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE, autocalibrate)
+	actiwave_acc, _, actiwave_time = get_actiwave_acc_data(subject = subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE, autocalibrate = perform_autocalibration)
 	# actiwave heart rate data
-	actiwave_hr, actiwave_hr_time = get_actiwave_hr_data(subject, ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+	actiwave_hr, actiwave_hr_time = get_actiwave_hr_data(subject = subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
 
 
 	"""
@@ -1147,11 +1139,12 @@ def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, a
 	if len(dic_segments) > 0:
 
 		# loop over the dictionary start and stop times
+		counter = 0
 		for v in dic_segments.values():
 
 			# get the start and stop values from the value componont
 			start, stop = v['start'], v['stop']
-			logging.debug('Processing Start: {}, Stop : {}'.format(start, stop))
+			logging.debug('Processing Start: {}, Stop : {}, Counter : {}'.format(start, stop, counter))
 
 			# obtain correct slice for actigraph data
 			df_actigraph_segment = df_actigraph_acc.loc[start:stop]
@@ -1179,11 +1172,23 @@ def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, a
 			# predict class
 			label = predict_class(classifier, X)[0]
 
+			# if perform_correction is set to True, correct label for subjects with long candidate non wear sequence; typically this long sequence will be classified as wear time where it should be non wear time
+			if perform_correction:
+				
+				# check if subject is part of subjects for correction dictionary, if so, check if counter is part of returned list
+				counter_to_correct = get_subject_counters_for_correction(subject)
+				if counter_to_correct is not None:
+					if counter in counter_to_correct:
+						# correct label by flipping it
+						label = 0 if label == 1 else 1
+			
 			logging.debug('Predicted class label: {}'.format(label))
 
 			# check if label is predicted as non-wear time, that is 0
 			if label == 0:
 				non_wear_final_vector[v['start_index']:v['stop_index']] = 0
+
+			counter += 1
 
 	# save to HDF5 if set to True
 	save_data_to_group_hdf5(group = subject, data = non_wear_final_vector, data_name = 'actigraph_true_non_wear', overwrite = True, create_group_if_not_exists = False, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
@@ -1213,6 +1218,9 @@ def batch_process_calculate_classification_performance(function, limit = None, s
 
 	# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
 	subjects = get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[0 + skip_n:limit]
+
+	# remove subjects with invalid data
+	subjects = [s for s in subjects if s not in get_subjects_with_invalid_data()]
 
 	# loop over the subjects
 	if use_parallel:
@@ -1271,8 +1279,15 @@ def process_calculate_classification_performance(subject, idx = 1, total = 1):
 	else:
 		# take all values in column index 1, column index 0 is the time array which we don't need
 		hecht_3_nw = hecht_3_nw[:,1]
+
 	# troiano non wear time, take all values in column index 1, column index 0 is the time array which we don't need
-	troiano_nw = read_dataset_from_group(group_name = subject, dataset = 'troiano_2007_non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[:,1]
+	troiano_nw = read_dataset_from_group(group_name = subject, dataset = 'troiano_2007_non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)#[:,1]
+	# get the start time from the first row of the first column
+	# start_datetime = np.asarray(troiano_nw[0,0], dtype='datetime64[ns]')
+	start_datetime = troiano_nw[0,0]
+
+	# get the second column of troiano_nw since it contains the non-wear data
+	troiano_nw = troiano_nw[:,1]
 	# choi non wear time, take all values in column index 1, column index 0 is the time array which we don't need
 	choi_nw = read_dataset_from_group(group_name = subject, dataset = 'choi_2011_non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[:,1]
 	# hees non wear time
@@ -1303,194 +1318,648 @@ def process_calculate_classification_performance(subject, idx = 1, total = 1):
 	choi_nw = 1 - choi_nw[:clip_length].reshape(-1,1)
 	hees_nw = 1 - hees_nw[:clip_length].reshape(-1,1)
 
-	"""
-		CALCULATE PERFORMANCE METRICS
-	"""
-
 	# combine data
 	data = np.hstack([true_nw, hecht_3_nw, troiano_nw, choi_nw, hees_nw]).astype(np.uint8)
 
-	# dictionary with column index to name
-	data_names = {	0 : 'actigraph_true_non_wear', 
-					1 : 'hecht_2009_3_axes_non_wear_data', 
-					2 : 'troiano_2007_non_wear_data', 
-					3 : 'choi_2011_non_wear_data', 
-					4 : 'hees_2013_non_wear_data'}
-	
-	# empty meta_data dictionary to populate later
-	meta_data = {}
+	# add start time to meta_data; this can later be used to create a time column
+	meta_data = {'start_datetime': start_datetime}
 
-	# compare datasets among each other
-	for i in range(1, data.shape[1]):
-
-		logging.debug('Comparing column {} ({}) to {} ({})'.format(0, data_names[0], i, data_names[i]))
-
-		# true labels
-		y = data[:,0]
-
-		# predicted labels
-		y_hat = data[:,i]
-
-		# get confusion matrix values
-		tn, fp, fn, tp = get_confusion_matrix(y, y_hat, labels = [0,1]).ravel()
-
-		logging.debug('tn: {}, fp: {}, fn: {}, tp: {}'.format(tn, fp, fn, tp))
-
-		# calculate precision
-		precision = tp / (tp + fp)
-		# calculate specificity
-		specificity = tn / (fp + tn)
-		# calculate recall
-		recall = tp / (tp + fn)
-		# calculate f1
-		f1 = 2 * tp / (2 * tp + fp + fn)
-
-		# create dictionary for meta data
-		meta_data_record = {	'tn' : tn,
-								'fp' : fp,
-								'fn' : fn,
-								'tp' : tp,
-								'precision' : precision,
-								'specificity' : specificity,
-								'recall' : recall,
-								'f1' : f1}
-
-		# add meta data record to meta data and prepend the name of the column to it
-		for key, value in meta_data_record.items():
-			meta_data['{}_{}'.format(data_names[i], key)] = value
-
-	save_data_to_group_hdf5(group = subject, data = data, data_name = 'non_wear_data', meta_data = meta_data, overwrite = True, create_group_if_not_exists = False, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+	save_data_to_group_hdf5(group = subject, data = data, data_name = 'non_wear_data', meta_data = meta_data, overwrite = True, create_group_if_not_exists = True, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
 
 
-def process_plot_classification_performance_per_subject(read_data_from_file = False, limit = None, skip_n = 0, df_save_folder = os.path.join('files', 'classification-performance')):
+def process_save_classification_performance_to_file(save_folder = os.path.join('files', 'classification-performance')):
 	"""
-	Plot precision, recall, f1 etc. metrics per subject
+	Read classification performance for each subject and save as a CSV file to disk. This enables faster post-processing of this data
+	In addition, save a combined numpy array with all the classification results; true labels and the four non wear algorithms
 
 	Parameters
 	----------
-	read_data_from_file : Boolean (optional)
-		if set to True, then read plot data from file. Note that the first time this function is called it needs to save the data first before it can read from file
-	limit : int (optional)
-		limit the number of subjects to be processed
-	skip_n : int (optional)
-		skip first N subjects
 	df_save_folder: os.path
-		folder location to save Pandas dataframes to
+		folder location to save data to	
 	"""
-					
-	if not read_data_from_file:
 
-		# create save folder if not exist
-		create_directory(df_save_folder)
+	# define start and stop time for filtered data; here we can define to filter data for day time only
+	filter_start, filter_end = '07:00', '23:00'
 
-		# read all subjects
-		subjects = get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)[0 + skip_n:limit]
+	# get all the subjects from the hdf5 file and remove subjects with invalid data
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
 
-		# index for dataframe
-		index_values = ['tn', 'fp', 'fn', 'tp', 'precision', 'specificity', 'recall', 'f1']
+	# create save folder if not exist
+	create_directory(save_folder)
+
+	# empty list to store the non wear data to
+	non_wear_data = []
+	non_wear_data_filtered = []
+
+	# loop over each subject and read performance metrics from hdf5
+	for i, subject in enumerate(subjects):
+
+		# verbose
+		logging.info('{style} Processing subject:{} {}/{} {style}'.format(subject, i, len(subjects), style = '='*10))
+
+		"""
+			READ DATA
+		"""
+
+		# read data from HDF5
+		data = read_dataset_from_group(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
 		
-		# pandas Dataframe to store results
-		df_hecht = pd.DataFrame(index = index_values)
-		df_troiano = pd.DataFrame(index = index_values)
-		df_choi = pd.DataFrame(index = index_values)
-		df_hees = pd.DataFrame(index = index_values)
+		# check if data is not None
+		if data is None:
+			logging.warning('Dataset returned with None value. Skipping subject {}...'.format(subject))
+			continue
 
-		# mapping from dataset string to dataframe
-		dataset_to_df = {'hecht_2009_3_axes_non_wear_data' : df_hecht,
-						'troiano_2007_non_wear_data': df_troiano,
-						'choi_2011_non_wear_data': df_choi, 
-						'hees_2013_non_wear_data' : df_hees}
+		# add data to non wear data list
+		non_wear_data.append(data)
+		
+		# get meta data with classification statistics
+		meta_data = read_metadata_from_group_dataset(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+
+		"""
+			FILTER DATA
+		"""
+
+		# read start_datetime and remove from dictionary at the same time and convert to datetime64
+		start_datetime = np.asarray(meta_data.pop('start_datetime'), dtype='datetime64[ns]')
+		
+		# convert start_datetime into an array with timestamps per second with the length being equal to the lenght of the data
+		time_data = np.asarray(start_datetime, dtype='datetime64[s]') + np.asarray(np.arange(data.shape[0]), dtype='timedelta64[s]')
+
+		# create pandas dataframe from data and time
+		df_data = pd.DataFrame(data, index = time_data)
+		
+		# filter between start and stop and convert to numpy array
+		data_filtered = df_data.between_time(filter_start, filter_end).to_numpy()
+		
+		# add filtered data to list
+		non_wear_data_filtered.append(data_filtered)
+
+	# convert list of arrays to single numpy array
+	non_wear_data = np.vstack((non_wear_data))
+	non_wear_data_filtered = np.vstack((non_wear_data_filtered))
+
+	# save numpy data to file
+	np.save(os.path.join(save_folder, 'non_wear_data.npy'), non_wear_data)
+	np.save(os.path.join(save_folder, 'non_wear_data_filtered.npy'), non_wear_data_filtered)
 
 
-		# empty list to store the non wear data to
-		non_wear_data = []
 
-		# loop over each subject and read performance metrics from hdf5
-		for i, subject in enumerate(subjects):
+def process_classification_performance_total(data_folder = os.path.join('files', 'classification-performance')):
+	"""
+	Create table with classification performance of all subjects
 
-			# verbose
-			logging.info('{style} Processing subject:{} {}/{} {style}'.format(subject, i, len(subjects), style = '='*10))
+	Paramaters
+	----------
+	data_folder : os.path
+		folder where the classification numpy array is stored
+	"""
 
-			# read data from HDF5
-			data = read_dataset_from_group(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+	# files to process
+	F = ['non_wear_data', 'non_wear_data_filtered']
 
-			# check if data is not None
-			if data is None:
-				logging.warning('Dataset returned with None value. Skipping subject {}...'.format(subject))
-				continue
+	# loop over files and process
+	for f in F:
 
-			# add data to non wear data list
-			non_wear_data.append(data)
+		logging.info('Processing file: {}'.format(f))
 
-			# get meta data with classification statistics
-			meta_data = read_metadata_from_group_dataset(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+		# read non wear data
+		non_wear_data = np.load(os.path.join(data_folder, '{}.npy'.format(f)))
 
-			# empty dictionary to hold values
-			meta_data_record = {}
-			
-			# loop over key value pairs of the meta-data
-			for key, value in meta_data.items():
+		# define the labels of the array columns
+		col_to_label = {0: 'True', 1 : 'Hecht', 2 : 'Troiano', 3 : 'Choi', 4 : 'Hees'}
 
-				# index location to split string
-				split = key.rfind('_')
-				# split key
-				data_name, metric = key[:split], key[split + 1:]
+		# dataframe to store values to
+		df = pd.DataFrame()
 
-				# add data_name to dictionary if not exist already
-				if data_name not in meta_data_record:
-					meta_data_record[data_name] = {}
-				
-				# check data_name and then assign metric to correct dataframe
-				meta_data_record[data_name][metric] = value
+		# loop over data from non wear algorithm and calculate classification performance
+		for col in range(1, non_wear_data.shape[1]):
 
-			for key, value in meta_data_record.items():
+			logging.debug('Processing column {} {}'.format(col, col_to_label[col]))
 
-				# create the series and add to correct dataframe
-				dataset_to_df[key][subject] = pd.Series(value)
+			# true labels; this is the first column, or index 0
+			y = non_wear_data[:,0]
 
-		# save datasets to file as csv
-		for dataset, df in dataset_to_df.items():
-			df.to_csv(os.path.join(df_save_folder, dataset + '.csv'))
+			# get predicted values
+			y_hat = non_wear_data[:,col]
 
-		# convert list of arrays to single numpy array
-		non_wear_data = np.vstack((non_wear_data))
+			# get confusion matrix values
+			tn, fp, fn, tp = get_confusion_matrix(y, y_hat, labels = [0,1]).ravel()
 
-		# save numpy data to file
-		np.save(os.path.join(df_save_folder, 'non_wear_data.npy'), non_wear_data)
-	
-	else:
+			logging.debug('tn: {}, fp: {}, fn: {}, tp: {}'.format(tn, fp, fn, tp))
 
-		# read numpy array with non wear data
-		# column are [0] : 'actigraph_true_non_wear', [1] : 'hecht_2009_3_axes_non_wear_data', [2] : 'troiano_2007_non_wear_data', [3] : 'choi_2011_non_wear_data', [4] : 'hees_2013_non_wear_data'}
-		non_wear_data = np.load(os.path.join(df_save_folder, 'non_wear_data.npy'))
+			# calculate classification performance such as precision, recall, f1 etc.
+			classification_performance = calculate_classification_performance(tn, fp, fn, tp)
 
-		# read dataframes with 
-		df_hecht = pd.read_csv(os.path.join(df_save_folder, 'hecht_2009_3_axes_non_wear_data.csv'), index_col = 0)
-		df_troiano = pd.read_csv(os.path.join(df_save_folder, 'troiano_2007_non_wear_data.csv'), index_col = 0)
-		df_choi = pd.read_csv(os.path.join(df_save_folder, 'choi_2011_non_wear_data.csv'), index_col = 0)
-		df_hees = pd.read_csv(os.path.join(df_save_folder, 'hees_2013_non_wear_data.csv'), index_col = 0)
-
-	# combine dataframes in ordered dictionary
-	dfs = [df_hecht, df_troiano, df_choi, df_hees]
-
-	# create arrays with classification performance
-	num_rows = len(df_hecht.columns)
-	spec = np.zeros((num_rows, 4))
-	prec = np.zeros((num_rows, 4))
-	f1 = np.zeros((num_rows, 4))
-	
-	# fill arrays
-	for i, df in enumerate(dfs):
+			# add classification performance to dataframe
+			df[col_to_label[col]] = pd.Series(classification_performance)
+		
 		# transpose dataframe
 		df = df.T
-		# populate matrices
-		spec[:,i] = df['specificity']
-		prec[:,i] = df['precision']
-		f1[:,i] = df['f1']
 
-	plot_classification_performance(spec, prec, f1)
+		df.to_csv(os.path.join(data_folder, 'classification-results-{}.csv'.format(f)))
 
+
+def process_plot_classification_results(data_folder = os.path.join('files', 'classification-performance')):
+	"""
+	plot classification performance of all subjects
+
+	Paramaters
+	----------
+	data_folder : os.path
+		folder where the classification numpy array is stored
+	"""
+
+	# files to process
+	F = ['non_wear_data', 'non_wear_data_filtered']
+
+	# read in csv file as dataframe
+	data = pd.read_csv(os.path.join(data_folder, 'classification-results-{}.csv'.format(F[0])), index_col = 0)
+	data_filtered = pd.read_csv(os.path.join(data_folder, 'classification-results-{}.csv'.format(F[1])), index_col = 0)
+
+	# call plot function
+	plot_classification_results(data, data_filtered)
+
+
+def process_plot_time_distribution():
+
+	# get all the subjects from the hdf5 file and remove subjects with invalid data
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
+	
+	# list with time stamps per minute/per hour
+	full_time_range = pd.date_range('2017-01-01 00:00', '2017-01-01 23:59', freq = '1T')
+
+	# empty dictionary with hour-minute of the day and 0 counter (will be filled later)
+	time_subjects = {'{}:{}'.format(str(x.hour).zfill(2), str(x.minute).zfill(2)) : 0 for x in full_time_range}
+	time_nw = {'{}:{}'.format(str(x.hour).zfill(2), str(x.minute).zfill(2)) : 0 for x in full_time_range}
+	
+	# loop over each subject, get the time distribution
+	for i, subject in enumerate(subjects):
+
+		logging.info('{style} Processing subject : {} {}/{} {style}'.format(subject, i, len(subjects), style = '='*10))
+
+		# read data from HDF5
+		data = read_dataset_from_group(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
 		
+		# check if data is not None
+		if data is None:
+			logging.warning('Dataset returned with None value. Skipping subject {}...'.format(subject))
+			continue
+		
+		# get meta data with classification statistics
+		meta_data = read_metadata_from_group_dataset(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+		
+		# read start_datetime and remove from dictionary at the same time and convert to datetime64
+		start_datetime = np.asarray(meta_data.pop('start_datetime'), dtype='datetime64[ns]')
+		
+		# convert start_datetime into an array with timestamps per second with the length being equal to the length of the data
+		time_data = np.asarray(start_datetime, dtype='datetime64[s]') + np.asarray(np.arange(data.shape[0]), dtype='timedelta64[s]')
+
+		# create Pandas Dataframe
+		df_subjects = pd.DataFrame(time_data, columns = ['time'])
+		# set time data as index
+		df_subjects.set_index('time', inplace = True)
+		# resample per minute
+		df_subjects = df_subjects.resample('1T').sum()
+
+		# loop over each index and add 1 if hour:min of the day is present
+		for row_index in df_subjects.index:
+			time_subjects['{}:{}'.format(str(row_index.hour).zfill(2), str(row_index.minute).zfill(2))] += 1 
+
+		# filter for non wear time
+		nw_time = time_data[data[:,0] == 1]
+
+		# create Pandas Dataframe
+		df_nw = pd.DataFrame(nw_time, columns = ['time'])
+		# set time data as index
+		df_nw.set_index('time', inplace = True)
+		# resample per minute
+		df_nw = df_nw.resample('1T').sum()
+
+		# loop over rows in dataframe and append counter to time dictionary
+		for row_index in df_nw.index:
+			time_nw['{}:{}'.format(str(row_index.hour).zfill(2), str(row_index.minute).zfill(2))] += 1 
+
+	# convert time dictionary to pandas dataframe; 
+	df_time_subjects = pd.DataFrame(time_subjects.values(), index = time_subjects.keys(), columns = ['subject frequency'])
+	# set time index as the new dataframe index
+	df_time_subjects.set_index(full_time_range, inplace = True)
+
+	# convert time dictionary to pandas dataframe; 
+	df_time_nw = pd.DataFrame(time_nw.values(), index = time_nw.keys(), columns = ['nw frequency'])
+	# set time index as the new dataframe index
+	df_time_nw.set_index(full_time_range, inplace = True)
+	# join two dataframes together
+	df = df_time_subjects.join(df_time_nw, how = 'inner')
+	# resample to 10 minutes (this will also sum up the values on the minute scale)
+	df = df.resample('10T').sum()
+
+	# correct frequency that was the result of resampling to 10min intervals
+	df['subject frequency'] /= 10.
+	df['nw frequency'] /= 10.
+
+	# calculate percentage of non-wear time
+	df['nw percentage'] = df['nw frequency'] / df['subject frequency'] * 100
+
+	# call plot function
+	plot_time_distribution(df, full_time_range)
+
+
+def process_plot_nw_scenarios(read_from_file = True):
+
+	if not read_from_file:
+		# first scenario: non wear time
+		data = {'90097934' : {'start' : '10:00', 'stop' : '12:00'},
+				'90079227' : {'start' : '11:00', 'stop' : '12:00'},
+				'90222419' : {'start' : '10:00', 'stop' : '11:00'},
+					}
+
+		# obtain data for each subject
+		for subject in data.keys():
+
+			logging.info('Processing subject {}'.format(subject))
+
+			"""
+				GET ACTIGRAPH DATA
+			"""
+			actigraph_acc, _ , actigraph_time = get_actigraph_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+			# get start and stop time
+			# start_time, stop_time = actigraph_time[0], actigraph_time[-1]
+
+			# obtain candidate segments
+			candidate_segment = find_candidate_non_wear_segments_from_raw(actigraph_acc, std_threshold = 0.004, min_segment_length = 1, sliding_window = 1, hz = 100)
+
+			"""
+				GET ACTIWAVE DATA
+			"""
+			actiwave_acc, _ , actiwave_time = get_actiwave_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+			actiwave_hr, actiwave_hr_time = get_actiwave_hr_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+
+			"""
+				CREATING THE DATAFRAMES
+			"""
+
+			# convert actigraph data to pandas dataframe
+			df_actigraph_acc = pd.DataFrame(actigraph_acc, index = actigraph_time, columns = ['ACTIGRAPH Y', 'ACTIGRAPH X', 'ACTIGRAPH Z'])
+			# candidate segment
+			df_candidate_segment = pd.DataFrame(candidate_segment, index = actigraph_time, columns = ['CANDIDATE NW EPISODE'])
+			# convert actiwave data to pandas dataframe
+			df_actiwave_acc = pd.DataFrame(actiwave_acc, index = actiwave_time, columns = ['ACTIWAVE Y', 'ACTIWAVE X', 'ACTIWAVE Z'])
+			# convert actiwave hr to pandas dataframe
+			df_actiwave_hr = pd.DataFrame(actiwave_hr, index = actiwave_hr_time, columns = ['ESTIMATED HR'])
+
+			"""
+				COMBINE DATAFRAMES
+			"""
+			# merge all dataframes
+			df_data = df_actigraph_acc \
+						.join(df_candidate_segment, how='outer') \
+						.join(df_actiwave_acc, how='outer') \
+						.join(df_actiwave_hr, how='outer')
+
+			# cut additional day for specific subject
+			if subject == '90222419':
+				df_data = df_data.iloc[:int(len(df_data) * 0.5)]
+
+			# filter between start and stop
+			df_data = df_data.between_time(data[subject]['start'], data[subject]['stop'])
+
+			data[subject]['data'] = df_data
+	else:
+		# save data as pickle
+		data = load_pickle('nw_scenarios', os.path.join('files', 'paper'))
+
+	plot_nw_scenarios(data)
+
+
+def process_table_cv_classification(grid_search_folder = os.path.join('files', 'grid-search', 'final'), cv_grid_search_folder = os.path.join('files', 'grid-search-cv', 'split3-false')):
+
+	classification_metrics = ['accuracy', 'precision', 'recall', 'f1']
+
+	# read grid search files from folder
+	gs_files = read_directory(grid_search_folder)
+	# read cross validation grid search filres
+	cv_gs_files = [x for x in read_directory(cv_grid_search_folder) if 'cv-grid-search-results' in x]
+
+	# empty dataframe to store classification results to
+	df_classification = pd.DataFrame()
+	# empty dataframe for parameter combinations
+	df_parameters = pd.DataFrame(index = ['AT', 'MPL', 'ST', 'SS', 'VM', 'WST', 'MWL', 'T', 'I', 'M', 'MW', 'WO', 'StdT', 'StdA', 'VT', 'VA'])
+
+	"""
+		CV GRID SEARCH
+	"""
+	for f in cv_gs_files:
+
+		# read pkl file
+		data = load_pickle(f)
+
+		# read method name from file
+		nw_method = f.split('-')[-1][:-4]
+
+		df_training_results = pd.DataFrame()
+		for cnt, training_results in data['training'].items():
+			df_training_results[cnt] = pd.Series(training_results['test_results'])
+
+		# add training classification results as a series to the dataframe
+		df_classification['{} {}'.format(nw_method, 'training')] = df_training_results.T.mean(skipna = True)
+		# add test classification results as a series to the dataframe
+		df_classification['{} {}'.format(nw_method, 'test')] = pd.Series(data['test'])
+
+		# get parameters that resulted in highest classification result
+		if nw_method == 'troiano':
+			# unpack cross validation parameter values
+			at, mpl, st, ss, vm  = data['combination'].split('-')
+			# add to dataframe
+			df_parameters['{} {}'.format(nw_method, 'f1 (cv)')] = pd.Series({'AT' : int(at), 'MPL' : int(mpl), 'ST' : int(st), 'SS' : int(ss), 'VM' : vm})
+			# also add the default parameter values (see non wear algorithm for default values)
+			df_parameters['{} {}'.format(nw_method, 'default')] = pd.Series({	'AT' : 0, 'MPL' : 60, 'ST' : 2, 'SS' : 100, 'VM' : 'False'})
+		elif nw_method == 'choi':
+			# same as above
+			at, mpl, st, mwl, wst, vm = data['combination'].split('-')
+			df_parameters['{} {}'.format(nw_method, 'f1 (cv)')] = pd.Series({'AT' : int(at), 'MPL' : int(mpl), 'ST' : int(st), 'MWL' : int(mwl), 'WST' : int(wst), 'VM' : vm})
+			df_parameters['{} {}'.format(nw_method, 'default')] = pd.Series({	'AT' : 0, 'MPL' : 90, 'ST' : 2, 'MWL' : 30, 'WST' : 0, 'VM' : 'False'})
+		elif nw_method == 'hecht':
+			# same as above
+			t, i, m = data['combination'].split('-')
+			df_parameters['{} {}'.format(nw_method, 'f1 (cv)')] = pd.Series({'T' : int(t), 'I' : int(i), 'M' : int(m)})
+			df_parameters['{} {}'.format(nw_method, 'default')] = pd.Series({	'T' : 5, 'I' : 20, 'M' : 2})
+		elif nw_method == 'hees':
+			mw, wo, st, sa, vt, va = data['combination'].split('-')
+			df_parameters['{} {}'.format(nw_method, 'f1 (cv)')] = pd.Series({'MW' : int(mw), 'WO' : int(wo), 'StdT' : int(st), 'StdA' : int(sa), 'VT' : int(vt), 'VA' : int(va)})
+			df_parameters['{} {}'.format(nw_method, 'default')] = pd.Series({'MW' : 60, 'WO' : 15, 'StdT' : 3, 'StdA' : 2, 'VT' : 50, 'VA' : 2})
+		else:
+			logging.error('Non wear method {} not implemented'.format(nw_method))
+			exit(1)
+
+	"""
+		GRID SEARCH (on all the subjects)
+	"""
+	for f in gs_files:
+
+		# read pkl file
+		data = load_pickle(f)
+
+		# read method name from file
+		nw_method = f.split('-')[-1][:-4]
+
+		# # print default parameter classification results (for test)
+		# if nw_method == 'hecht':
+		# 	logging.info('Default Hecht classification results: {}'.format(data['5-20-2']))
+		# elif nw_method == 'troiano':
+		# 	logging.info('Default Troiano classification results: {}'.format(data['0-60-2-100-False']))
+		# elif nw_method == 'hees':
+		# 	logging.info('Default Hees classification results: {}'.format(data['60-15-3-2-50-2']))
+		# elif nw_method == 'choi':
+		# 	logging.info('Default Choi classification results: {}'.format(data['0-90-2-30-0-False']))
+
+		for classification_metric in classification_metrics:
+
+			# variables to keep track of the top classification results and the classification metric
+			top_results, top_value = [], 0
+
+			for row in sorted(data.items(), key = lambda item: item[1][classification_metric], reverse = True):
+
+				# only do this for the first result (the top result)
+				if len(top_results) == 0:
+					# add row to top results
+					top_results.append(row)
+					top_value = row[1][classification_metric]
+
+					# add classification results to dataframe
+					df_classification['{} {}'.format(nw_method, 'all')] = pd.Series(row[1])
+				else:
+					# now check if second and other results have similar score as the first one (sometimes multiple combinatations result in the same classification score)
+					if row[1][classification_metric] == top_value:
+						top_results.append(row)
+					else:
+						break
+			
+			# temporary dataframe to store parameter values to
+			df_temp = pd.DataFrame()
+			# get parameter values and store in dataframe
+			for i, row in enumerate(top_results):
+				if nw_method == 'choi':
+					at, mpl, st, mwl, wst, vm = row[0].split('-')
+					df_temp[i] = pd.Series({'AT' : int(at), 'MPL' : int(mpl), 'ST' : int(st), 'MWL' : int(mwl), 'WST' : int(wst), 'VM' : vm})
+				elif nw_method == 'troiano':
+					at, mpl, st, ss, vm  = row[0].split('-')
+					df_temp[i] = pd.Series({'AT' : int(at), 'MPL' : int(mpl), 'ST' : int(st), 'SS' : int(ss), 'VM' : vm})
+				elif nw_method == 'hecht':
+					t, i, m = row[0].split('-')
+					df_temp[i] = pd.Series({'T' : int(t), 'I' : int(i), 'M' : int(m)})
+				elif nw_method == 'hees':
+					mw, wo, st, sa, vt, va = row[0].split('-')
+					df_temp[i] = pd.Series({'MW' : int(mw), 'WO' : int(wo), 'StdT' : int(st), 'StdA' : int(sa), 'VT' : int(vt), 'VA' : int(va)})
+				else:
+					logging.error('Non wear method top results not implemented: {}'.format(nw_method))
+					exit()
+			
+
+			# get ranges of parameter values (for instance, 10, 20, 30 needs to be converted to 10-30)
+			temp_data = {}
+			for name, values in df_temp.iterrows():
+				# get min and max parameter value
+				min_value, max_value = values.min(), values.max()
+				
+				# add as combination, for example 10-30 if min and max are not the same, and if they are the same, then just use min (this avoids ranges such as 10-10)
+				if min_value != max_value:
+					temp_data[name] = '{}--{}'.format(min_value, max_value)
+				else:
+					temp_data[name] = '{}'.format(min_value)
+			
+			# add to dataframe 
+			df_parameters['{} {}'.format(nw_method, classification_metric)] = pd.Series(temp_data)
+
+	
+	# transpose so we have access to colums
+	df_parameters = df_parameters.T
+
+	# merge key values that mean the same thing
+	for from_key, to_key in [('MPL', 'MW'), ('WST', 'M'), ('MWL', 'I')]:
+		
+		# combine MPL and MW (they both minimum interval (mins))
+		combine_mpl_mw = df_parameters[from_key].astype(str).combine(df_parameters[to_key].astype(str), min)
+		# replace column in dataframe
+		df_parameters[to_key] = combine_mpl_mw
+		# remove mpl
+		df_parameters = df_parameters.drop(from_key, axis=1)
+	
+
+	# transpose back again
+	df_parameters = df_parameters.T
+
+	# add column with short code to long code conversion
+	df_parameters['description'] = df_parameters.index
+	df_parameters['description'] = df_parameters['description'].apply(convert_short_code_to_long)
+
+	# remove columns
+	for index_row in ['tn', 'fp', 'fn', 'tp']:
+		df_classification = df_classification.drop(index_row)
+
+
+	# pd.options.display.float_format = '{:.3f}'.format
+	# print(df_classification.round(3))
+	df_classification = df_classification.round(3)
+	df_parameters = df_parameters.fillna('-')
+	df_parameters = df_parameters.replace('nan', '-', regex=True)
+	
+	# sort columns
+	sorted_columns = []
+	for column in df_parameters:
+		nw_method_sort = {'hecht' : 0, 'troiano' : 1, 'choi' : 2, 'hees' : 3}
+		metric_sort = {'default' : 0, 'accuracy' : 1, 'precision' : 2, 'recall' : 3, 'f1' : 4, 'f1 (cv)' : 5}
+
+		substring_nw_method = column.split()[0]
+		substring_metric = ' '.join(column.split()[1:])
+
+		column = '{}{}{}'.format(nw_method_sort.get(substring_nw_method, ''), metric_sort.get(substring_metric, ''), column)
+
+		if column == 'description': column = '00description'
+		sorted_columns.append(column)
+	sorted_columns = [x[2:] for x in sorted(sorted_columns)]
+	df_parameters = df_parameters.reindex(sorted_columns, axis=1)
+
+	# save to disk
+	df_classification.to_csv(os.path.join('plots', 'paper', 'tables', 'cv_classification_results.csv'))
+	df_parameters.to_csv(os.path.join('plots', 'paper', 'tables', 'parameter_values.csv'))
+
+def process_nw_time_overview(read_from_file = True):
+	"""
+	Get an overview of the non-wear sequences in the data so as to know their distribution
+	"""
+
+	# get all the subjects from the hdf5 file and remove subjects with invalid data
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
+
+	# empty dictionary where we can store the lengths of the non wear time
+	dic_segments = {}
+		
+	# loop over each subject, get the time distribution
+	for i, subject in enumerate(subjects):
+
+		logging.info('{style} Processing subject : {} {}/{} {style}'.format(subject, i, len(subjects), style = '='*10))
+
+		# read true non wear time and convert 0>1 and 1->0
+		subject_true_nw = 1 - read_dataset_from_group(group_name = subject, dataset = 'actigraph_true_non_wear', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE).astype('uint8').reshape(-1,1)
+		# convert to 1s instead of 100hz
+		subject_true_nw = subject_true_nw[::100]
+
+		"""
+			GET LENGTH NON WEAR SEGMENTS
+		"""
+
+		# find all indexes of the numpy array that have been labeled non-wear time
+		non_wear_indexes = np.where(subject_true_nw == 1)[0]
+		# find consecutive ranges
+		non_wear_segments = find_consecutive_index_ranges(non_wear_indexes)
+		
+		# check if segments are found
+		if len(non_wear_segments[0]) > 0:
+
+			# get lenghts of segments and add to dictionary
+			dic_segments[subject] = [len(x) for x in non_wear_segments]
+	
+
+	# get a list of lenghts in minutes
+	data = []
+	# get all non wear time lengths
+	for value in dic_segments.values():
+		for length in value:
+			data.append(length // 60)
+
+	# convert to numpy array
+	data = np.array(data)
+
+	# plot data
+	plot_nw_distribution(data)
+
+
+def process_participants_characteristics():
+
+
+	# get all the subjects from the hdf5 file and remove subjects with invalid data
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
+
+	# location of the CSV file with subject meta data
+	meta_data_file = os.path.join(os.sep, 'Volumes', 'LaCie', 'AGD_TEST', 'vekt.csv')
+
+	# convert CSV file to dictionary so we have access to each of the meta data by subject ID (skip the first row as it represents the column headers)
+	meta_data = {x[4] : {'age' : x[0], 'sex' : 'Male' if x[1] == '1' else 'Female', 'height' : x[2], 'weight' : x[3]} for x in read_csv(meta_data_file)[1:]}
+
+	data = pd.DataFrame(index = ['age', 'sex', 'height', 'weight'])
+
+	for s in subjects:
+
+		data[s] = pd.Series(meta_data[s])
+	
+	# transform dataframe
+	data = data.T
+
+	# change datatype of columns
+	data[['age', 'height', 'weight']] = data[['age', 'height', 'weight']].astype('float')
+	data['bmi'] = data['weight'] / (data['height']/100)**2
+	
+	# total number of participants
+	total = 698
+	errors = total - len(data) 
+	n = len(data)
+	n_male = sum(data['sex'] == 'Male')
+	n_female = sum(data['sex'] == 'Female')
+	perc_male = round(n_male / n * 100, 2)
+	perc_female = round(n_female / n * 100, 2)
+	min_age = int(data['age'].min())
+	max_age = int(data['age'].max())
+	avg_age = round(data['age'].mean(), 2)
+	std_age = round(data['age'].std(), 2)
+	avg_height = round(data['height'].mean(), 2)
+	std_height = round(data['height'].std(), 2)
+	avg_weight = round(data['weight'].mean(), 2)
+	std_weight = round(data['weight'].std(), 2)
+	# min_bmi = round(data['bmi'].min(), 2)
+	# max_bmi = round(data['bmi'].max(), 2)
+	avg_bmi = round(data['bmi'].mean(), 2)
+	std_bmi = round(data['bmi'].std(), 2)
+
+	# construct sentence for paper
+	sentence = f"""Among these 6,125 participants, a random selection of {total} participants wore a second accelerometer, the ActiWave Cardio (CamNtech Ltd, Cambridge, UK), for at least 24 hours. Since 
+					the ActiWave Cardio additionally recorded a single channel ECG waveform, correct attachment of the ECG pads was necessary to obtain valid data. Unfortunately, data from {errors} participants 
+					contained measurements or device errors (e.g. axis producing too high acceleration values, no recording at all) and were removed from further analysis. A total of {n} 
+					participants, {n_male} ({perc_male}%) males and {n_female} ({perc_female}%) females aged {min_age}--{max_age} (average {avg_age}, SD {std_age}), had valid data for both the 
+					ActiGraph and ActiWave device. The participants had an average height of {avg_height}cm (SD={std_height}), an average weight of {avg_weight}kg (SD={std_weight}), and an average BMI of {avg_bmi}kg/m^2 (SD={std_bmi})"""
+
+	print(sentence.replace('\t', '').replace('\n', ''))
+
+
+def process_dataset_characteristics():
+
+	# get all the subjects from the hdf5 file and remove subjects with invalid data
+	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
+
+	data = []
+	for i, subject in enumerate(subjects):
+
+		logging.debug(f'Processing {i}/{len(subjects)}')
+
+		# read data
+		subject_epoch_data = read_dataset_from_group(group_name = subject, dataset = 'epoch60', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE).astype('float16')
+
+		# add to dataframe
+		data.append(len(subject_epoch_data)) 
+
+	# convert to numpy array
+	data = np.array(data)
+
+	# convert to hours
+	data = data / 60
+
+	min_hours = np.min(data)
+	max_hours = np.max(data)
+	avg_hours = np.mean(data)
+	std_hours = np.std(data)
+
+	logging.info(f'Min: {min_hours}, Max: {max_hours}, Average: {avg_hours}, Standard Deviation {std_hours}')
+
+
 """
 	INTERNAL HELPER FUNCTIONS
 """
@@ -1586,9 +2055,9 @@ def get_grid_setup():
             {
                 "hyperparameter": "gamma",
                 "random": True,
-                "min": 0.40,
-                "max": 0.55,
-                "length": 10,
+                "min": 0.001,
+                "max": 2.000,
+                "length": 100,
             },
             {"hyperparameter": "shrinking"},
             {"hyperparameter": "kernel"},
@@ -1780,38 +2249,63 @@ def get_features_for_candidate_segment(a, b, c, d, start = None, stop = None, co
 
 if __name__ == "__main__":
 
-	# start timer and memory counter
+	# # start timer and memory counter
 	tic, process, logging = set_start()
 
 	# 1) start mapping the actiwave data onto actigraph and find the union 
-	batch_process_mapping_actiwave_on_actigraph(use_parallel = False, skip_processed_subjects = False, limit = 10)
+	# batch_process_mapping_actiwave_on_actigraph(use_parallel = False, skip_processed_subjects = False, limit = 10)
 
-	# 2) batch process finding autocalibrate weights (will be saved as metadata)
-	batch_process_calculate_autocalibrate_weights(use_parallel = False, skip_processed_subjects = False, limit = 1)
+	# # 2) batch process finding autocalibrate weights (will be saved as metadata)
+	# batch_process_calculate_autocalibrate_weights(use_parallel = False, skip_processed_subjects = False, limit = 1)
 
-	# 3a) create a labeled dataset with features for machine learning models
-	batch_process_create_features_from_labels(function = create_ml_features_from_labels, use_parallel = True)
+	# # 3a) create a labeled dataset with features for machine learning models
+	# batch_process_create_features_from_labels(function = create_ml_features_from_labels, use_parallel = True)
 	
-	# 3a) create a labeled dataset with features for deep learning models
-	batch_process_create_features_from_labels(function = create_dl_features_from_labels, use_parallel = False, limit=1)
+	# # 3a) create a labeled dataset with features for deep learning models
+	# batch_process_create_features_from_labels(function = create_dl_features_from_labels, use_parallel = False, limit=1)
 
-	# 4a) create the machine learning classifier
-	create_ml_classifier()
+	# # 4a) create the machine learning classifier
+	# create_ml_classifier()
 
-	# 4b) create deep learning classifier
-	create_dl_classifier()
+	# # 4b) create deep learning classifier
+	# create_dl_classifier()
 
-	# 4c) explore_misclassification_of_training_data
-	explore_misclassification_of_training_data()
+	# # 4c) explore_misclassification_of_training_data
+	# explore_misclassification_of_training_data()
 
-	# 5) batch process finding non-wear time in actigraph data with the help of actiwave data
-	batch_process_detect_true_non_wear_time(use_parallel = True)
+	# # 5) batch process finding non-wear time in actigraph data with the help of actiwave data
+	# batch_process_detect_true_non_wear_time(use_parallel = False)
 
-	# 6a) calculate precision, recall of non wear methods to true non wear time
-	batch_process_calculate_classification_performance(function = process_calculate_classification_performance, use_parallel = True)
+	# # 6a) calculate precision, recall of non wear methods to true non wear time
+	# batch_process_calculate_classification_performance(function = process_calculate_classification_performance, use_parallel = False, limit = 10)
+	
+	# 6b save classification performance and classification data to fisk
+	# process_save_classification_performance_to_file()
 
-	# 6a) plot classifaction performance per subject
-	process_plot_classification_performance_per_subject()
+	# 6c) total classification performance table
+	process_classification_performance_total()
+
+	"""
+	Paper material
+	"""
+
+	# plot classification results from all participants for four non wear algorithms
+	# process_plot_classification_results()
+	
+	# plot time distribution of data
+	# process_plot_time_distribution()
+
+	# plot three scenarios of non wear time
+	# process_plot_nw_scenarios()
+
+	# table with classification results for all, grid search and cv grid search + best parameter values
+	# process_table_cv_classification()
+
+	# get overview of distribution of non-wear times
+	# process_nw_time_overview()
+
+	# get dataset characteristics (gender, height, weight, bmi, etc)
+	# process_dataset_characteristics()
 
 	# print time and memory
 	set_end(tic, process)

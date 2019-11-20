@@ -31,7 +31,7 @@ def get_epoch_folder():
 
 def parse_epoch_file(file, dtype = np.uint16):
 	"""
-	Parse the content of the epoch file
+	Parse the content of the CSV epoch file
 		- the header and return as a dictionary of values
 		- the epoch data as a numpy array
 
@@ -99,11 +99,11 @@ def parse_epoch_file(file, dtype = np.uint16):
 					if 'Data File Created' in l:
 
 						# parse label value pairs from header of header line
-						dic_header = parse_header_of_header_line(l, dic_header)
+						dic_header = _parse_header_of_header_line(l, dic_header)
 
 					# parse out the value of the header label
 					for label in header_labels:
-						dic_header = parse_single_epoch_header_line(l, label, dic_header)
+						dic_header = _parse_single_epoch_header_line(l, label, dic_header)
 
 
 				else:
@@ -151,7 +151,7 @@ def convert_epoch_data(data, start_epoch_sec, end_epoch_sec):
 	data: numpy array
 		array containing the epoch data
 	start_epoch_sec : int
-		number of seconds the original epoch data has, for instance 10 for 10 seconds epoch data
+		number of seconds the original epoch data has, for instance 10 for 10 seconds epoch data. In a way this can be seen as from epoch.
 	end_epoch_sec : int
 		number of seconds the converted data needs to be, for instance 60 for 60 seconds epoch data.
 
@@ -233,7 +233,7 @@ def create_epoch_time_array(start_date, start_date_format, start_time, epoch_dat
 """
 	Internal Helper Function
 """
-def parse_header_of_header_line(l, dic_header):
+def _parse_header_of_header_line(l, dic_header):
 	"""
 	The first line of the header contains some raw information that we need to parse
 	Example is : ------------ Data File Created By ActiGraph wGT3XBT ActiLife v6.13.3 Firmware v1.6.1 date format dd.MM.yyyy Filter Normal Multiple Incline Limb: Undefined -----------
@@ -265,7 +265,7 @@ def parse_header_of_header_line(l, dic_header):
 		return dic_header
 
 
-def parse_single_epoch_header_line(l, label, dic_header):
+def _parse_single_epoch_header_line(l, label, dic_header):
 	"""
 	Parse a single epoch header line to obtain the value for the label
 

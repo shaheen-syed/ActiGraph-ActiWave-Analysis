@@ -11,7 +11,7 @@ import logging
 """
 from functions.helper_functions import calculate_vector_magnitude
 
-def choi_2011_calculate_non_wear_time(data, time, activity_threshold = 0, min_period_len = 90, spike_tolerance = 2,  min_window_len = 30, use_vector_magnitude = False, print_output = False):
+def choi_2011_calculate_non_wear_time(data, time, activity_threshold = 0, min_period_len = 90, spike_tolerance = 2,  min_window_len = 30, window_spike_tolerance = 0,  use_vector_magnitude = False, print_output = False):
 	"""	
 	Estimate non-wear time based on Choi 2011 paper:
 
@@ -32,7 +32,7 @@ def choi_2011_calculate_non_wear_time(data, time, activity_threshold = 0, min_pe
 	activity_threshold : int (optional)
 		The activity threshold is the value of the count that is considered "zero", since we are searching for a sequence of zero counts. Default threshold is 0
 	min_period_len : int (optional)
-		The minimum length of the consecutive zeros that can be considered valid non wear time. Default value is 60 (since we have 60s epoch data, this equals 60 mins)
+		The minimum length of the consecutive zeros that can be considered valid non wear time. Default value is 90 (since we have 60s epoch data, this equals 90 mins)
 	spike_tolerance : int (optional)
 		Any count that is above the activity threshold is considered a spike. The tolerence defines the number of spikes that are acceptable within a sequence of zeros. The default is 2, meaning that we allow for 2 spikes in the data, i.e. aritifical movement
 	min_window_len : int (optional)
@@ -121,7 +121,7 @@ def choi_2011_calculate_non_wear_time(data, time, activity_threshold = 0, min_pe
 		if start:
 
 			# keep track of the number of minutes with intensity that is not a 'zero' count
-			if paxinten > 0:
+			if paxinten > activity_threshold:
 				
 				# increase the spike counter
 				cnt_non_zero +=1
@@ -134,22 +134,25 @@ def choi_2011_calculate_non_wear_time(data, time, activity_threshold = 0, min_pe
 				upstream = data[paxn + spike_tolerance: paxn + min_window_len + 1]
 
 				# check if upstream has non zero counts, if so, then the window is invalid
-				if (upstream > 0).sum() > 0:
+				if (upstream > 0).sum() > window_spike_tolerance:
 					window_2_invalid = True
 
 				# check downstream window if there are counts, again, we skip the count right before since we allow for 2 minutes of spikes
 				downstream = data[paxn - min_window_len if paxn - min_window_len > 0 else 0: paxn - 1]
 
 				# check if downstream has non zero counts, if so, then the window is invalid
-				if (downstream > 0).sum() > 0:
+				if (downstream > 0).sum() > window_spike_tolerance:
 					window_2_invalid = True
 
 				# if the second window is invalid, we need to reset the sequence for the next run
 				if window_2_invalid:
 					reset = True
 
-			# reset counter of value is zero again
-			if paxinten == 0:
+			# reset counter if value is "zero" again
+			# if paxinten == 0:
+			# 	cnt_non_zero = 0
+
+			if paxinten <= activity_threshold:
 				cnt_non_zero = 0
 
 			# the sequence ends when there are 3 consecutive spikes, or an invalid second window (upstream or downstream), or the last value of the sequence	

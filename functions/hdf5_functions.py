@@ -124,7 +124,7 @@ def create_group_in_hdf5_file(group, hdf5_file = None):
 			# create group as subject name
 			hf.create_group(group)
 			
-			logging.info('Succesfully create group {}'.format(group))
+			logging.info('Succesfully created group {}'.format(group))
 	except IOError:
 
 		# random sleep between seconds
@@ -250,7 +250,7 @@ def delete_dataset_from_group(group_name, dataset, hdf5_file = None):
 		exit(1)
 
 
-def read_dataset_from_group(group_name, dataset, hdf5_file = None, start_slice = None, end_slice = None, stride = 1):
+def read_dataset_from_group(group_name, dataset, hdf5_file = None, start_slice = None, end_slice = None, stride = 1, verbose = False):
 	"""
 	Read dataset from group of HDF5 file
 
@@ -268,6 +268,8 @@ def read_dataset_from_group(group_name, dataset, hdf5_file = None, start_slice =
 		end slice of the  data
 	stride : int (optional)
 		stride of the data (i.e. skipping rows)
+	verbose : boolean (optional)
+		if set to True, print out information
 
 	Returns
 	----------
@@ -275,7 +277,8 @@ def read_dataset_from_group(group_name, dataset, hdf5_file = None, start_slice =
 		numpy array of the dataset
 	"""
 
-	logging.debug('Reading group: {}, dataset: {}, hdf5_file: {}'.format(group_name, dataset, hdf5_file))
+	if verbose:
+		logging.debug('Reading group: {}, dataset: {}, hdf5_file: {}'.format(group_name, dataset, hdf5_file))
 
 	# if the hdf5 file is not given, then we read it from the function get_hdf5_file 
 	if hdf5_file is None:

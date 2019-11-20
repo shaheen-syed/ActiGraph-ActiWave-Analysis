@@ -167,7 +167,7 @@ def get_actiwave_ecg_data(subject, hdf5_file):
 
 def get_actigraph_epoch_data(subject, epoch_dataset, hdf5_file):
 	"""
-	Return 10 seconds epoch data for subject
+	Return epoch data for subject
 
 	Parameters
 	---------
@@ -181,7 +181,7 @@ def get_actigraph_epoch_data(subject, epoch_dataset, hdf5_file):
 	Returns
 	--------
 	epoch_data : np.array((n_samples, 3 axes with XYZ counts + 1 with steps ))
-		10s epoch data for the subject ID
+		epoch data for the subject ID
 	epoch_meta_data : dict()
 		dictionary with meta data
 	epoch_time_data: np.array((n_samples, 1))
@@ -217,7 +217,7 @@ def get_actigraph_epoch_data(subject, epoch_dataset, hdf5_file):
 		exit(1)
 
 
-def get_actigraph_epoch_60_data(epoch_data, epoch_time_data):
+def get_actigraph_epoch_60_data(epoch_data, epoch_time_data, start_epoch_sec = 10, end_epoch_sec = 60):
 	"""
 	Convert 10s epoch into 60s epoch
 
@@ -239,10 +239,11 @@ def get_actigraph_epoch_60_data(epoch_data, epoch_time_data):
 	try:
 
 		# convert 10 seconds epoch data to 60 seconds epoch data
-		epoch_60_data = convert_epoch_data(data = epoch_data, start_epoch_sec = 10, end_epoch_sec = 60)
+		epoch_60_data = convert_epoch_data(data = epoch_data, start_epoch_sec = start_epoch_sec, end_epoch_sec = end_epoch_sec)
 
 		# adjust the time scale, we take every 6th row, so basically every minute and we also take as many samples as we have epoch-60 vmu data, sometimes we have an additional time value due to rounding
-		epoch_60_time_data = epoch_time_data[::6][:len(epoch_60_data)]
+		epoch_stride = end_epoch_sec // start_epoch_sec
+		epoch_60_time_data = epoch_time_data[::epoch_stride][:len(epoch_60_data)]
 
 		return epoch_60_data, epoch_60_time_data
 

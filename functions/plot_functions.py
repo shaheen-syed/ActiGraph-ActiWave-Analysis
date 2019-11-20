@@ -13,6 +13,9 @@ import seaborn as sns
 import matplotlib.dates as dates
 import matplotlib.dates as md
 from matplotlib import colors
+from matplotlib.lines import Line2D
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
 sns.set_style("whitegrid")
 plt.rcParams['agg.path.chunksize'] = 10000
 
@@ -811,13 +814,13 @@ def plot_non_wear_algorithms(data, subject, plot_folder):
 		# add handles back to axis 
 		axs[ax].legend(handles, labels, loc='upper left', ncol=2, prop={'size': 20})
 
-
+	
 	# crop white space
 	fig.set_tight_layout(True)
 	# create the plot folder if not exist already
 	create_directory(plot_folder)
 	# create the save location
-	save_location = os.path.join(plot_folder, '{}.png'.format(subject))
+	save_location = os.path.join(plot_folder, '{}_opt.png'.format(subject))
 	# save the figure
 	fig.savefig(save_location, dpi=150)
 	# close the figure environemtn
@@ -841,214 +844,518 @@ def plot_roc_curve(fpr, tpr, auc):
 
 
 
-"""
-	TESTING
-"""
 
-def plot_signal(subject, data1, data2):
+def plot_time_distribution(data, full_time_range, plot_folder = os.path.join('plots', 'test'), plot_name = 'time_distribution.pdf'):
+	"""
+	plot distribution over hours of the day for all subjects
 
+	Parameters
+	----------
+	data : pd.DataFrame()
+		pandas dataframe with ['subject frequency'], ['nw frequency'], and ['nw percentage']
+	plot_foler : os.path (optional)
+		folder to store figure in
 
-	plot_folder = os.path.join('plots', 'test')
-
-	# setting up the plot environment
-	fig, axs = plt.subplots(2, 1, figsize=(50, 20))
-	axs = axs.ravel()
-
-	axs[0].plot(data1)
-	axs[1].plot(data2)
+	"""
+	# import pandas as pd
+	# # list with time stamps per minute/per hour
+	# hour_min_range = pd.date_range('2017-01-01 00:00', '2017-01-01 23:59', freq = '1T')
 	
-
-	# crop white space
-	fig.set_tight_layout(True)
-	# create the plot folder if not exist already
-	create_directory(plot_folder)
-	# create the save location
-	save_location = os.path.join(plot_folder, '{}.png'.format(subject))
-	# save the figure
-	fig.savefig(save_location, dpi=150)
-	# close the figure environemtn
-	plt.close()
-
-
-
-
-
-
-def plot_test_counts(x, x_1, x_2, x_3, x_4, x_5, x_6, x_7, x_8, y, subject):
-
-	plot_folder = os.path.join('plots', 'test')
-
 	# setting up the plot environment
-	fig, axs = plt.subplots(10, 1, figsize=(50, 20))
+	fig, axs = plt.subplots(1, 3, figsize = (15, 5))
 	axs = axs.ravel()
-
-	axs[0].plot(x, label='x')
-	axs[0].set_title('30hz Actigraph GT3X RAW X-axis')
 	
+	# create the x labels
+	x_labels = ['{}:{}'.format(str(x.hour).zfill(2), str(x.minute).zfill(2)) for x in full_time_range]
+	x = np.arange(len(data.index))
 
-	axs[1].plot(x_1, label='x_1')
-	axs[1].set_title('1) alias filter 0.01 - 7Hz')
+	# plot settings
+	width = .8
+	linewidth = 0
+	align = 'center'
+	
+	axs[0].bar(x, data['subject frequency'], width = width, align = align, color = '#1b9e77', linewidth = linewidth)
+	axs[0].set_title('Distribution Activity data (frequency)')
+	
+	axs[1].bar(x, data['nw frequency'], width = width, align = align, color = '#d95f02', linewidth = linewidth)
+	axs[1].set_title('Distribution non-wear data (frequency)')
+	
+	axs[2].bar(x, data['nw percentage'], width = width, align = align, color = '#7570b3', linewidth = linewidth)
+	axs[2].set_title('Relative Distribution non-wear data (%)')
 
-	axs[2].plot(x_2, label='x_2')
-	axs[2].set_title('2) frequency band pass filter')
-
-	axs[3].plot(x_3, label='x_3')
-	axs[3].set_title('3) down sample to 10hz')
-
-
-	axs[4].plot(x_4, label='x_4')
-	axs[4].set_title('4) rectification (convert to absolute values)')
-
-
-	axs[5].plot(x_5, label='x_5')
-	axs[5].set_title('5) truncate 2.13g')
-
-	axs[6].plot(x_6, label='x_6')
-	axs[6].set_title('6) dead band filter')
-
-	axs[7].plot(x_7, label='x_7')
-	axs[7].set_ylim((0,200))
-	axs[7].set_title('7) convert to 8 bit resolution')
-
-	axs[8].plot(x_8, label='x_8')
-	axs[8].set_ylim((0,200))
-	axs[8].set_title('8) accumalate 10 consecutive samples into 1 sec epoch')
-
-	axs[9].plot(y, label='y')
-	axs[9].set_ylim((0,200))
-	axs[9].set_title('Actilife 1s epoch counts')
-
-
+	# adjust all the axes
 	for ax in axs:
-		# make sure the x-axis has no white space
+
+		# set x labels (only take every hour)
+		ax.set_xticklabels(x_labels[::60])
+		# set x ticks
+		ax.set_xticks(x[::6])
+		# no grid lines
+		ax.grid(False)
+		# no padding on x axis
 		ax.margins(x = 0)
-
+		
+		# rotate all the x tick labels
+		for tick in ax.get_xticklabels():
+			tick.set_rotation(45)
 
 	# crop white space
 	fig.set_tight_layout(True)
 	# create the plot folder if not exist already
 	create_directory(plot_folder)
 	# create the save location
-	save_location = os.path.join(plot_folder, '{}.png'.format(subject))
+	save_location = os.path.join(plot_folder, plot_name)
 	# save the figure
-	fig.savefig(save_location, dpi=150)
+	fig.savefig(save_location)
 	# close the figure environemtn
 	plt.close()
 
 
-def plot_counts(acc_30hz_x, epoch_x, epoch_x_predicted, y_hat_metrics, y_hat_filter_method, y_hat_filter_metrics,  subject):
+def plot_grid_search(data, labels, annotations, plot_parameters, plot_name, plot_folder = os.path.join('plots', 'test2')):
 
-	# save location
-	plot_folder = os.path.join('plots', 'test')
 
-	# setting up the plot environment
-	fig, axs = plt.subplots(4, 1, figsize=(50, 20))
+	fig, axs = plt.subplots(plot_parameters['num_rows'], plot_parameters['num_columns'], figsize = plot_parameters['figsize'])
 	axs = axs.ravel()
 
-	# axs[0].plot(acc_100hz_x, label='100hz actigraph raw')
-	# axs[0].set_title('100hz Actigraph GT3X RAW X-axis')
-	# axs[0].set_ylim((-2,2))
-	
+	# loop over data
+	counter = 0
+	for combination, df in data.items():
 
-	axs[0].plot(acc_30hz_x, label='30hz actigraph raw')
-	axs[0].set_title('30hz Actigraph GT3X RAW X-axis')
-	axs[0].set_ylim((-2,2))
+		# get the x and y label
+		x_label, y_label = combination.split('_')
+		
+		x = df.columns
+		y = df.index
+		X, Y = np.meshgrid(x, y)
+		Z = df.values
+				
+		cs = axs[counter].contour(X, Y, Z, levels = plot_parameters['levels'], cmap='magma_r', vmin = plot_parameters['vmin'], vmax= plot_parameters['vmax'],  linewidths=2)
+		axs[counter].clabel(cs, inline = True, fontsize=12)
 
-	axs[1].plot(epoch_x, label='True epoch counts')
-	axs[1].set_title('ActiLife True epoch counts')
-	axs[1].set_ylim((0,200))
+		# set axes title
+		axs[counter].set_xlabel(labels[x_label])
+		axs[counter].set_ylabel(labels[y_label])
+		# remove grid lines
+		axs[counter].grid(False)
 
-	axs[2].plot(epoch_x_predicted, label='Predicted epoch counts - ' + ' '.join(['{}: {},'.format(key, value) for key, value in y_hat_metrics.items()]))
-	axs[2].set_title('Predicted epoch counts')
-	axs[2].set_ylim((0,200))
+		axs[counter].locator_params(integer=True)
+
+		if plot_parameters['annotations']:
+			# plot the a dot to indicate optimal parameter values
+			dot = axs[counter].plot(annotations[x_label], annotations[y_label], 'ro', zorder = 10)
+			# make sure the dot is on top of axes splines
+			dot[0].set_clip_on(False)
+		
+			# colors = ['r', 'g']
+			# lines = [Line2D([0], [0], markersize = 10, marker = 'o', color = 'w', markerfacecolor=c) for c in colors]
+			# legend_labels = ['default', 'optimized']
+			# leg = axs[0].legend(lines, legend_labels, frameon=False)
+			# leg.set_alpha(1)
+			# leg.set_zorder(102)
+			# leg.get_frame().set_facecolor('w')
+			# annotate
+			# axs[counter].annotate('default', (default_x, default_y))
+			# axs[counter].annotate('optimized', (top_x, top_y))
+
+		counter +=1
+
+	# remove plots if parameter is set
+	if plot_parameters.get('remove_plots') is not None:
+		[axs[x].set_visible(False) for x in plot_parameters['remove_plots']] 
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, plot_name)
+	# save the figure
+	fig.savefig(save_location)
+	# close the figure environemtn
+	plt.close()
+
+def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), plot_name = 'nw-scenarios.png'):
+
+	# plt.style.use("bmh")
+	fig, axs = plt.subplots(3, 3, figsize = (35,10))
+	axs = axs.ravel()
+
+	# define colors
+	c = ['#1b9e77', '#d95f02', '#7570b3', '#66a61e']
+	c = ['#84C8E4', '#6FE468', '#D04896', '#272A6F']
+	# define the counter for the subplots
+	cnt = 0
+	for dic_data in all_data.values():
+
+		# read data from dictionary
+		data = dic_data['data']
+
+		"""
+			Actigraph
+		"""
+
+		# plot acceleration Y
+		axs[0 + cnt].plot(data['ACTIGRAPH Y'], label = 'Y', color = c[0])
+		# plot acceleration X
+		axs[0 + cnt].plot(data['ACTIGRAPH X'], label = 'X', color = c[1])
+		# plot acceleration Z
+		axs[0 + cnt].plot(data['ACTIGRAPH Z'], label = 'Z', color = c[2])
+		# set the y axis limit
+		axs[0 + cnt].set_ylim((-4,4))
+		# set inner title
+		axs[0 + cnt].text(0.5 ,.9,'ActiGraph accelerometer', horizontalalignment='center', transform = axs[0 + cnt].transAxes, fontdict = {'size' : 20})
+		
+		# extract candidate segment
+		candidate_segment = data['CANDIDATE NW EPISODE'].loc[data['CANDIDATE NW EPISODE'] == 0]
+		# make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
+		candidate_segment = candidate_segment.iloc[::10 * 60]
+		
+		# plot candidate non-wear segment (episode)
+		if cnt == 2:
+			# for illustrative purposes, only show the last candidate episode
+			axs[0 + cnt].scatter( y = np.repeat(-2,len(candidate_segment[70:])),  x = candidate_segment[70:].index, c = 'r', s = 1)
+			axs[0 + cnt].scatter( y = -2,  x = candidate_segment[70:].index[0], c = 'r', s = 50, marker = '<')
+			axs[0 + cnt].scatter( y = -2,  x = candidate_segment[70:].index[-1], c = 'r', s = 50, marker = '>')
+		else:
+			# plot non wear as scatter
+			axs[0 + cnt].scatter( y = np.repeat(-2,len(candidate_segment)),  x = candidate_segment.index, c = 'r', s = 1)
+			axs[0 + cnt].scatter( y = -2,  x = candidate_segment.index[0], c = 'r', s = 50, marker = '<')
+			axs[0 + cnt].scatter( y = -2,  x = candidate_segment.index[-1], c = 'r', s = 50, marker = '>')
+			
+		"""
+			Actiwave acceleration
+		"""
+		# plot acceleration Y
+		axs[3 + cnt].plot(data['ACTIWAVE Y'].dropna(), label = 'Y', color = c[0])
+		# plot acceleration X
+		axs[3 + cnt].plot(data['ACTIWAVE X'].dropna(), label = 'X', color = c[1])
+		# plot acceleration Z
+		axs[3 + cnt].plot(data['ACTIWAVE Z'].dropna(), label = 'Z', color = c[2])
+		# set the y axis limit
+		axs[3 + cnt].set_ylim((-4,4))
+		# set the title
+		axs[3 + cnt].text(0.5 ,.9,'ActiWave Cardio accelerometer', horizontalalignment='center', transform = axs[3 + cnt].transAxes, fontdict = {'size' : 20})
+
+		"""
+			ESTIMATED HEART RATE DATA
+		"""
+
+		heart_rate_data = data['ESTIMATED HR'].dropna()
+		if cnt == 2:
+			heart_rate_data[0:60*38] = heart_rate_data[0:60*38].replace(0, np.nan)
+			heart_rate_data = heart_rate_data.interpolate()
+		# plot estimated heart rate
+		axs[6 + cnt].plot(heart_rate_data, label='ESTIMATED HR', c = c[3])
+		# set the y axis limit
+		axs[6 + cnt].set_ylim((0,150))
+		# set the title
+		axs[6 + cnt].text(0.5 ,.9,'ActiWave Cardio Heart Rate', horizontalalignment='center', transform = axs[6 + cnt].transAxes, fontdict = {'size' : 20})
+
+		# increment counter
+		cnt += 1
 
 
-	axs[3].plot(y_hat_filter_method, label='Filter method epoch counts  - ' + ' '.join(['{}: {},'.format(key, value) for key, value in y_hat_filter_metrics.items()]))
-	axs[3].set_title('Filter method epoch counts')
-	axs[3].set_ylim((0,200))
-
-
-
-	for ax in axs:
+	"""
+		STYLING THE PLOT
+	"""
+	for i, ax in enumerate(axs):
+		# no grid lines
+		ax.grid(False)
+		# define format of dates
+		xfmt = md.DateFormatter('%H:%M')
+		# define hours
+		hours = md.HourLocator(interval = 1)
+		# change the x-axis to show hours:
+		ax.xaxis.set_major_locator(hours)
+		# change the x-axis format
+		ax.xaxis.set_major_formatter(xfmt)
+		# change font size x acis
+		ax.xaxis.set_tick_params(labelsize=20)
+		# change font size y acis
+		ax.yaxis.set_tick_params(labelsize=20)
 		# set the legend
 		ax.legend(loc='upper left', prop={'size': 20})
 		# make sure the x-axis has no white space
 		ax.margins(x = 0)
 
+		# only x axis on bottom plots
+		if i not in [6, 7, 8]:
+			ax.get_xaxis().set_visible(False)
+		
+		# only y axis on left plots
+		if i not in [0, 3, 6]:
+			ax.get_yaxis().set_visible(False)
+
+	# titles on top of top plots
+	axs[0].set_title('A', fontdict = {'size' : 20})
+	axs[1].set_title('B', fontdict = {'size' : 20})
+	axs[2].set_title('C', fontdict = {'size' : 20})
+
+	# define y axis labels
+	axs[0].set_ylabel('acceleration (g)', fontsize = 20)
+	axs[3].set_ylabel('acceleration (g)', fontsize = 20)
+	axs[6].set_ylabel('beats per minute', fontsize = 20)
+
+	# candidate non wear episode label below arrows
+	axs[0].text(0.53 ,.15,'candidate non-wear episode', horizontalalignment='center', transform = axs[0].transAxes, fontdict = {'size' : 16})
+	axs[1].text(0.67 ,.15,'candidate non-wear episode', horizontalalignment='center', transform = axs[1].transAxes, fontdict = {'size' : 16})
+	axs[2].text(0.78 ,.15,'candidate non-wear episode', horizontalalignment='center', transform = axs[2].transAxes, fontdict = {'size' : 16})
+
 	# crop white space
 	fig.set_tight_layout(True)
 	# create the plot folder if not exist already
 	create_directory(plot_folder)
 	# create the save location
-	save_location = os.path.join(plot_folder, '{}.png'.format(subject))
+	save_location = os.path.join(plot_folder, plot_name)
 	# save the figure
 	fig.savefig(save_location, dpi=150)
 	# close the figure environemtn
 	plt.close()
 
 
-def plot_classification_performance(acc, spec, prec, f1, plot_folder = os.path.join('plots', 'test')):
 
+"""
+	FINAL PAPER PLOTS
+"""
+def plot_nw_distribution(data, plot_name = 'distribution-of-nw-times.pdf', plot_folder = os.path.join('plots', 'paper')):
 	"""
-	Plot classification performance of non wear algorithms to true non wear time
+	Plot histogram of non-wear episodes in minutes
 
 	Parameters
-	----------
-	acc: np.array(samples, 4)
-		numpy array with accuracy data
-	spec: np.array(samples, 4)
-		numpy array with specificity data
-	prec: np.array(samples, 4)
-		numpy array with precision data
-	f1: np.array(samples, 4)
-		numpy array with f1 data
+	---------
+	data : list
+		list of non-wear episodes in minutes
+	plot_name : string
+		name of the plot with extension
+	plot_folder : os.path
+		location to save plot to
 	"""
 
-	# setting up the plot environment
-	fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+	fig, axs = plt.subplots(1, 2, figsize = (10,5))
 	axs = axs.ravel()
 
-	# define the labels of the array columns
-	col_to_label = {0 : 'Hecht', 1 : 'Troiano', 2 : 'Choi', 3 : 'Hees'}
-	data_to_label = {0 : 'Accuracy', 1 : 'Specificity', 2 : 'Precision', 3 : 'F1'}
+	# first histogram
+	bins_first = [1] + list(range(5,61,5))
+	axs[0].hist(data, bins = bins_first, color = '#43a2ca')
+	axs[0].set_xticks(bins_first)
 
-	# data to plot
-	plot_data = [acc, spec, prec, f1]
+	# second histogram
+	bins_second = range(60,601,60)
+	axs[1].hist(data, bins = bins_second, color = '#43a2ca')
+	axs[1].set_xticks(bins_second)
 
-	for i, data in enumerate(plot_data):
-
-		# plot specificty
-		for column in range(data.shape[1]):
-			# plot each column of data with associated label
-			axs[i].plot(data[:,column], label = col_to_label[column])
-		
-		axs[i].set_title(data_to_label[i])
-
-	# # plot precision
-	# for column in range(prec.shape[1]):
-	# 	# plot each column of data with associated label
-	# 	axs[1].plot(prec[:,column], label = col_to_label[column])
-
-	# # plot f1
-	# for column in range(f1.shape[1]):
-	# 	# plot each column of data with associated label
-	# 	axs[2].plot(f1[:,column], label = col_to_label[column])
-
-	# plot additional elements on axes
+	# adjust the axes
 	for ax in axs:
-		# set the legend
-		ax.legend(loc='best', prop={'size': 10})
-		# make sure the x-axis has no white space
-		ax.margins(x = 0)
-
+		ax.set_xlabel('Non-wear time episode (mins)')
+		ax.set_ylabel('Frequency')
+		ax.grid(False)
+		ax.tick_params(axis='both', left = True, bottom = True, which='both')
 
 	# crop white space
 	fig.set_tight_layout(True)
 	# create the plot folder if not exist already
 	create_directory(plot_folder)
 	# create the save location
-	save_location = os.path.join(plot_folder, 'classification_performance.png')
+	save_location = os.path.join(plot_folder, plot_name)
 	# save the figure
 	fig.savefig(save_location, dpi=150)
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_classification_results(data, data_filtered, plot_name = 'classification_performance.pdf', plot_folder = os.path.join('plots', 'paper')):
+	"""
+	Plot classification performance of the four non wear algoritms with their default parameters for two datasets
+		1 = all the dat
+		2 = a filtered dataset that contains only data between 07:00 - 23:00
+
+	Parameters
+	----------
+	data : df.DataFrame
+		pandas dataframe with performance data per non wear method
+	data_filtered : df.DataFrame
+		pandas dataframe with filtered data per non-wear method
+	plot_name : string
+		name of the plot with extension
+	plot_folder : os.path
+		location to save plot to
+	"""
+
+	# define which classification metrics to plot
+	plot_metrics = ['accuracy', 'precision', 'recall', 'f1']
+
+	# setting up the plot environment
+	fig, axs = plt.subplots(1, len(plot_metrics), figsize=(14, 3), sharey = True)
+	axs = axs.ravel()
+
+	# create x ticks
+	x = np.arange(len(data.index))
+	# width of the bar
+	width = .4
+
+	# plot metrics
+	for i, metric in enumerate(plot_metrics):
+
+		# plot performance of all data
+		bars = axs[i].bar(x, data[metric], width = width, label = 'all data', align = 'center', alpha = .8, color = '#d8b365' )
+		# plot performance of data without nights
+		bars += axs[i].bar(x + width, data_filtered[metric], width = width, label = '07:00 - 23:00', align = 'center', alpha = .8, color = '#5ab4ac')
+
+		# plot bar height on top of bar
+		for rect in bars:
+			height = rect.get_height()
+			axs[i].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 2), ha='center', va='bottom')
+	
+		# adjust the plot
+		axs[i].set_xticks(x + width/2)
+		axs[i].set_xticklabels(data.index)
+		axs[i].grid(True, 'major', ls = '--')
+		axs[0].set_ylabel('score')
+		axs[i].set_ylim(0,1.1)
+		axs[1].legend(loc='best', prop={'size': 10})
+		axs[i].set_title('{}'.format(metric))
+	
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, plot_name)
+	# save the figure
+	fig.savefig(save_location)
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_classification_results_comparison(df, plot_name ='classification_performance_comparison.pdf', plot_folder = os.path.join('plots', 'paper')):
+	"""
+	Plot bar charts that show the classification performance for the non-wear algorithms
+
+	Parameters
+	----------
+	df : pd.DataFrame
+		hold classification data for each classification metric and non-wear algoritm. Note that the values in the cells are lists
+		with [0] being the default parameter and [1] the optimized
+	plot_name : string
+		name of the plot
+	plot_folder : os.path()
+		location to store the plot
+	"""
+
+	# setting up the plot environment
+	fig, axs = plt.subplots(1, 4, figsize=(14, 3), sharey=True)
+	# width of each bar
+	width = .4
+
+	for cnt, data_tuple in enumerate(df.iterrows()):
+
+		# get column name
+		column = data_tuple[0]
+		# get data
+		data = data_tuple[1]
+		# create bars
+		for item_cnt, results in enumerate(data.items()):
+			
+			# plot default performance values
+			bars = axs[cnt].bar(item_cnt, results[1][0], width = width, align = 'center', alpha = .8, color = '#d8b365' )
+			# plot optimized performance values
+			bars += axs[cnt].bar(item_cnt + width, results[1][1], width = width, align = 'center', alpha = .8, color = '#5ab4ac')
+
+			# plot bar height on top of bar
+			for rect in bars:
+				height = rect.get_height()
+				axs[cnt].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 2), ha='center', va='bottom')
+		
+		# adjust the plot
+		axs[cnt].set_xticks(np.arange(len(data)) + width/2)
+		axs[cnt].set_xticklabels(data.index)
+		axs[cnt].grid(True, 'major', ls = '--')
+		axs[0].set_ylabel('score')
+		axs[cnt].set_ylim(0,1.1)
+		axs[2].legend(['default', 'optimized'], loc='upper left', prop={'size': 10})
+		axs[cnt].set_title('{}'.format(column))
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, plot_name)
+	# save the figure
+	fig.savefig(save_location)
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_classification_results_comparison_all(df, plot_name ='classification_performance_comparison_all.pdf', plot_folder = os.path.join('plots', 'paper')):
+	"""
+	Plot bar charts that show the classification performance in comparison to other metrics, this shows how optimizing for precision affects the accuracy, recall, and f1.
+
+	Parameters
+	----------
+	df : pd.DataFrame
+		hold classification data for each classification metric and non-wear algoritm. Note that the values in the cells are lists
+		with [0] being the default parameter and [1] the optimized
+	plot_name : string
+		name of the plot
+	plot_folder : os.path()
+		location to store the plot
+	"""
+
+	# setting up the plot environment
+	fig, axs = plt.subplots(4, 4, figsize=(14, 12), sharey=True)
+	axs = axs.ravel()
+	# width of each bar
+	width = .4
+
+	for cnt, data_tuple in enumerate(df.iterrows()):
+
+		# get column name
+		column = data_tuple[0]
+		# get data
+		data = data_tuple[1]
+		# create x ticks array
+		x = np.arange(4)
+	
+		# create bars
+		for item_cnt, results in enumerate(data.items()):
+
+			# dynamically create plot index
+			ax_idx = cnt * 3 + item_cnt + cnt
+
+			# unpack non_wear method
+			metric = results[0]
+			# unpack default value
+			default_values = [results[1][0]['accuracy'], results[1][0]['precision'], results[1][0]['recall'], results[1][0]['f1']]
+			# unpack classification values
+			optimized_values = [results[1][1]['accuracy'], results[1][1]['precision'], results[1][1]['recall'], results[1][1]['f1']]
+
+			# plot default performance values
+			bars = axs[ax_idx].bar(x, default_values, width = width, align = 'center', alpha = .8, color = '#d8b365' )
+			# plot optimized performance values
+			bars += axs[ax_idx].bar(np.array(x) + width, optimized_values, width = width, align = 'center', alpha = .8, color = '#5ab4ac')
+
+			# plot bar height on top of bar
+			for rect in bars:
+				height = rect.get_height()
+				axs[ax_idx].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 2), ha='center', va='bottom')
+		
+			# adjust the plot
+			axs[ax_idx].set_xticks(np.arange(len(data)) + width/2)
+			axs[ax_idx].set_xticklabels(['accuracy', 'precision', 'recall', 'f1'])
+			axs[ax_idx].grid(True, 'major', ls = '--')
+			axs[cnt * 3].set_ylabel('score')
+			axs[ax_idx].set_ylim(0,1.1)
+			axs[cnt].legend(['default', 'optimized'], loc='upper right', prop={'size': 10})
+			axs[ax_idx].set_title('{} - Optimized for {}'.format(column, metric))
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, plot_name)
+	# save the figure
+	fig.savefig(save_location)
 	# close the figure environemtn
 	plt.close()
