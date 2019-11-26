@@ -67,7 +67,7 @@ def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold 
 					non_wear_time_vector[i] = 0
 
 		else:
-			# VMU is NOT great than threshold
+			# VMU is NOT greater than threshold
 			if not _check_following_time_interval_threshold(data, i,time_window, threshold, min_count):
 
 				# this is considered non-wear time
@@ -89,13 +89,16 @@ def _check_following_time_interval_threshold(data, index, time_window, threshold
 	check following [time_window] and see if at least min_count >= threshold
 	"""
 
-	# define the start slice, it will be the index +1 or index -1 depending on the operator.
+	# define the start slice
 	start_slice = index +  1
 	# define the end slice, it will be the start slice plus or minus (depending on the operator) the time windows
 	end_slice = start_slice + time_window
 
-
-	return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
+	# check if the following window is outside of the array, if this is the case, we cannot check for non wear time, so return True, meaning that it will be wear time
+	if end_slice > len(data):
+		return True
+	else:
+		return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
 
 
 def _check_preceding_time_interval_threshold(data, index, time_window, threshold, min_count):
@@ -105,12 +108,17 @@ def _check_preceding_time_interval_threshold(data, index, time_window, threshold
 	check preceding [time_window] and see if at least min_count >= threshold
 	"""
 
-	# define the start slice, it will be the index +1 or index -1 depending on the operator.
-	start_slice = index - 1
-	# define the end slice, it will be the start slice plus or minus (depending on the operator) the time windows
-	end_slice = start_slice - time_window
+	# define the start slice (note that we look backwards here)
+	start_slice = index - time_window
+	# define the end slice, since python does not include the item defined in the end slice, we do not have to subtract -1. For example, 100:120 does not include 120
+	end_slice = index
 
-	# we look backwards so we reverse the order of start and end
-	return ((data[end_slice:start_slice] > threshold).sum()) >= min_count
+	# if the return window is outside of the array values, then we cannot check for non-wear time, since there is no data. Here we return
+	if start_slice < 0:
+		# return False so we keep the wear time indication
+		return True
+	else:
+		# we look backwards
+		return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
 
 

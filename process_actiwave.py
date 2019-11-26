@@ -1631,7 +1631,7 @@ def process_plot_nw_scenarios(read_from_file = True):
 	plot_nw_scenarios(data)
 
 
-def process_table_cv_classification(grid_search_folder = os.path.join('files', 'grid-search', 'final'), cv_grid_search_folder = os.path.join('files', 'grid-search-cv', 'split3-false')):
+def process_table_cv_classification(grid_search_folder = os.path.join('files', 'grid-search', 'final_reverse_prec_rec'), cv_grid_search_folder = os.path.join('files', 'grid-search-cv', 'split3-false_reverse')):
 
 	classification_metrics = ['accuracy', 'precision', 'recall', 'f1']
 
@@ -1800,6 +1800,8 @@ def process_table_cv_classification(grid_search_folder = os.path.join('files', '
 	# pd.options.display.float_format = '{:.3f}'.format
 	# print(df_classification.round(3))
 	df_classification = df_classification.round(3)
+	# sort
+	df_classification = df_classification.reindex(sorted(df_classification), axis = 1)
 	df_parameters = df_parameters.fillna('-')
 	df_parameters = df_parameters.replace('nan', '-', regex=True)
 	
@@ -1818,6 +1820,8 @@ def process_table_cv_classification(grid_search_folder = os.path.join('files', '
 		sorted_columns.append(column)
 	sorted_columns = [x[2:] for x in sorted(sorted_columns)]
 	df_parameters = df_parameters.reindex(sorted_columns, axis=1)
+
+
 
 	# save to disk
 	df_classification.to_csv(os.path.join('plots', 'paper', 'tables', 'cv_classification_results.csv'))
@@ -2255,35 +2259,35 @@ if __name__ == "__main__":
 	# 1) start mapping the actiwave data onto actigraph and find the union 
 	# batch_process_mapping_actiwave_on_actigraph(use_parallel = False, skip_processed_subjects = False, limit = 10)
 
-	# # 2) batch process finding autocalibrate weights (will be saved as metadata)
+	# 2) batch process finding autocalibrate weights (will be saved as metadata)
 	# batch_process_calculate_autocalibrate_weights(use_parallel = False, skip_processed_subjects = False, limit = 1)
 
-	# # 3a) create a labeled dataset with features for machine learning models
+	# 3a) create a labeled dataset with features for machine learning models
 	# batch_process_create_features_from_labels(function = create_ml_features_from_labels, use_parallel = True)
 	
-	# # 3a) create a labeled dataset with features for deep learning models
+	# 3a) create a labeled dataset with features for deep learning models
 	# batch_process_create_features_from_labels(function = create_dl_features_from_labels, use_parallel = False, limit=1)
 
-	# # 4a) create the machine learning classifier
+	# 4a) create the machine learning classifier
 	# create_ml_classifier()
 
-	# # 4b) create deep learning classifier
+	# 4b) create deep learning classifier
 	# create_dl_classifier()
 
-	# # 4c) explore_misclassification_of_training_data
+	# 4c) explore_misclassification_of_training_data
 	# explore_misclassification_of_training_data()
 
-	# # 5) batch process finding non-wear time in actigraph data with the help of actiwave data
+	# 5) batch process finding non-wear time in actigraph data with the help of actiwave data
 	# batch_process_detect_true_non_wear_time(use_parallel = False)
 
-	# # 6a) calculate precision, recall of non wear methods to true non wear time
+	# 6a) calculate precision, recall of non wear methods to true non wear time
 	# batch_process_calculate_classification_performance(function = process_calculate_classification_performance, use_parallel = False, limit = 10)
 	
 	# 6b save classification performance and classification data to fisk
 	# process_save_classification_performance_to_file()
 
 	# 6c) total classification performance table
-	process_classification_performance_total()
+	# process_classification_performance_total()
 
 	"""
 	Paper material
@@ -2299,7 +2303,7 @@ if __name__ == "__main__":
 	# process_plot_nw_scenarios()
 
 	# table with classification results for all, grid search and cv grid search + best parameter values
-	# process_table_cv_classification()
+	process_table_cv_classification()
 
 	# get overview of distribution of non-wear times
 	# process_nw_time_overview()

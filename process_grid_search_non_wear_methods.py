@@ -161,8 +161,9 @@ def perform_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder =
 		# save classification performance
 		combination_to_confusion_matrix[combination] = calculate_classification_performance(*cf_matrix)
 
+	print(combination_to_confusion_matrix)
 	# save classification results to disk
-	save_pickle(combination_to_confusion_matrix, 'grid-search-results-{}'.format(nw_method), save_folder)
+	# save_pickle(combination_to_confusion_matrix, 'grid-search-results-{}'.format(nw_method), save_folder)
 
 """
 	CV GRID SEARCH
@@ -447,7 +448,7 @@ def perform_plot_grid_search(nw_method, data_folder = os.path.join('files', 'gri
 """
 	OTHER PLOTS
 """
-def perform_plot_comparison_default_optimized(folder_results = os.path.join('files', 'grid-search', 'final')):
+def perform_plot_comparison_default_optimized(folder_results = os.path.join('files', 'grid-search', 'final_reverse_prec_rec')):
 
 	# results of grid search
 	hecht_data = load_pickle(file_name = 'grid-search-results-hecht.pkl', folder = folder_results)
@@ -685,7 +686,7 @@ def _get_hees_grid_search_nw_vector(variables, data, reverse = True, hz = 100):
 	nw_vector = hees_2013_calculate_non_wear_time(data, hz = hz, min_non_wear_time_window = int(mw), window_overlap = int(wo), std_mg_threshold = float(st), std_min_num_axes = int(sa) , value_range_mg_threshold = float(vt), value_range_min_num_axes = int(va))
 
 	# downscale nw_vector to 1s samples (so it can be compared to true non wear time that is on 1s resolution)
-	# nw_vector = nw_vector[::100]
+	nw_vector = nw_vector[::100]
 	
 	# flip 0>1 and 1>0
 	if reverse:
@@ -815,12 +816,12 @@ def _read_epoch_and_true_nw_data(subject, i = 1, total = 1, return_epoch = True,
 		subject_epoch_data = subject_epoch_data.astype('float16')
 	else:
 		# read raw data and downscale to 1s
-		subject_data, *_ = get_actigraph_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
-		subject_data = subject_data[::100]
-		subject_epoch_data = subject_data
+		# subject_data, *_ = get_actigraph_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+		# subject_data = subject_data[::100]
+		# subject_epoch_data = subject_data
 
 		# set data to none, no epoch data is returned. 
-		# subject_epoch_data = None
+		subject_epoch_data = None
 
 	"""
 		TRUE NON WEAR TIME
@@ -848,6 +849,10 @@ def _get_grid_search_parameter_combinations(nw_method):
 		I = range(5, 100 + 1, 5) # 20x
 		# min count
 		M = [1, 2, 3, 4, 5] # 5x
+
+		T = [5]
+		I = [20]
+		M = [2]
 
 		# create list of all possible combinations
 		combinations = [f'{t}-{i}-{m}' for t in T for i in I for m in M]
@@ -973,10 +978,11 @@ def _calculate_subject_combination_confusion_matrix(method, combination, subject
 				subject_true_nw = subjects_data[subject]['true_nw_time']
 			elif method == 'raw':
 				# get raw data
-				# subject_data, *_ = get_actigraph_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+				subject_data, *_ = get_actigraph_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
 				
 				# get raw data from dictionary
-				subject_data = subjects_data[subject]['data']
+				# subject_data = subjects_data[subject]['data']
+				
 				# get true non wear time
 				subject_true_nw = subjects_data[subject]['true_nw_time']
 			else:
@@ -999,7 +1005,7 @@ def _calculate_subject_combination_confusion_matrix(method, combination, subject
 				subject_nw_vector, *_ = _get_choi_grid_search_nw_vector(variables = combination.split('-'), data = subject_data)
 			elif nw_method == 'hees':
 				# get non-wear vector
-				subject_nw_vector, *_ = _get_hees_grid_search_nw_vector(variables = combination.split('-'), data = subject_data, hz=1)
+				subject_nw_vector, *_ = _get_hees_grid_search_nw_vector(variables = combination.split('-'), data = subject_data)#, hz=1)
 			else:
 				logging.error('Non-wear method {} not defined.'.format(nw_method))
 				exit(1)
@@ -1042,9 +1048,7 @@ def _calculate_subject_combination_confusion_matrix(method, combination, subject
 	return combination, classification_data
 
 
-
 if __name__ == '__main__':
-
 
 	# start timer and memory counter
 	tic, process, logging = set_start()
@@ -1055,7 +1059,7 @@ if __name__ == '__main__':
 	"""
 		2) perform grid search on all subjects
 	"""
-	perform_grid_search(method = 'epoch', nw_method = 'hecht')
+	# perform_grid_search(method = 'epoch', nw_method = 'hecht')
 	# perform_grid_search(method = 'epoch', nw_method = 'troiano')
 	# perform_grid_search(method = 'epoch', nw_method = 'choi')
 	# perform_grid_search(method = 'raw', nw_method = 'hees')
