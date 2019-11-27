@@ -100,7 +100,7 @@ def create_epoch_datasets(subject, S, dataset_prefix, idx = 1, total = 1):
 """
 	GRID SEARCH
 """
-def perform_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder = os.path.join('files', 'grid-search-hees')):
+def perform_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder = os.path.join('files', 'grid-search-hecht')):
 	"""
 	Perform grid search analysis on epoch or raw data. For epoch data, set method = 'epoch', for raw set method = 'raw'
 
@@ -161,14 +161,13 @@ def perform_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder =
 		# save classification performance
 		combination_to_confusion_matrix[combination] = calculate_classification_performance(*cf_matrix)
 
-	print(combination_to_confusion_matrix)
 	# save classification results to disk
-	# save_pickle(combination_to_confusion_matrix, 'grid-search-results-{}'.format(nw_method), save_folder)
+	save_pickle(combination_to_confusion_matrix, 'grid-search-results-{}'.format(nw_method), save_folder)
 
 """
 	CV GRID SEARCH
 """
-def perform_cv_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder = os.path.join('files', 'grid-search-cv')):
+def perform_cv_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder = os.path.join('files', 'grid-search-cv-hecht')):
 	"""
 	Perform cross validated grid search
 
@@ -850,10 +849,6 @@ def _get_grid_search_parameter_combinations(nw_method):
 		# min count
 		M = [1, 2, 3, 4, 5] # 5x
 
-		T = [5]
-		I = [20]
-		M = [2]
-
 		# create list of all possible combinations
 		combinations = [f'{t}-{i}-{m}' for t in T for i in I for m in M]
 
@@ -1059,7 +1054,7 @@ if __name__ == '__main__':
 	"""
 		2) perform grid search on all subjects
 	"""
-	# perform_grid_search(method = 'epoch', nw_method = 'hecht')
+	perform_grid_search(method = 'epoch', nw_method = 'hecht')
 	# perform_grid_search(method = 'epoch', nw_method = 'troiano')
 	# perform_grid_search(method = 'epoch', nw_method = 'choi')
 	# perform_grid_search(method = 'raw', nw_method = 'hees')
@@ -1067,7 +1062,7 @@ if __name__ == '__main__':
 	"""
 		3) perform cross validated grid search
 	"""
-	# perform_cv_grid_search(method = 'epoch', nw_method = 'hecht')
+	perform_cv_grid_search(method = 'epoch', nw_method = 'hecht')
 	# perform_cv_grid_search(method = 'epoch', nw_method = 'troiano')
 	# perform_cv_grid_search(method = 'epoch', nw_method = 'choi')
 	# perform_cv_grid_search(method = 'raw', nw_method = 'hees')

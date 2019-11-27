@@ -83,7 +83,6 @@ def hecht_2009_triaxial_calculate_non_wear_time(data, epoch_sec = 60, threshold 
 
 
 def _check_following_time_interval_threshold(data, index, time_window, threshold, min_count):
-
 	"""
 	Part of Hecht's (2009) non-wear time algorithm
 	check following [time_window] and see if at least min_count >= threshold
@@ -94,15 +93,11 @@ def _check_following_time_interval_threshold(data, index, time_window, threshold
 	# define the end slice, it will be the start slice plus or minus (depending on the operator) the time windows
 	end_slice = start_slice + time_window
 
-	# check if the following window is outside of the array, if this is the case, we cannot check for non wear time, so return True, meaning that it will be wear time
-	if end_slice > len(data):
-		return True
-	else:
-		return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
+	# return True or False if the window contains more than the min_count
+	return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
 
 
 def _check_preceding_time_interval_threshold(data, index, time_window, threshold, min_count):
-
 	"""
 	Part of Hecht's (2009) non-wear time algorithm
 	check preceding [time_window] and see if at least min_count >= threshold
@@ -113,12 +108,10 @@ def _check_preceding_time_interval_threshold(data, index, time_window, threshold
 	# define the end slice, since python does not include the item defined in the end slice, we do not have to subtract -1. For example, 100:120 does not include 120
 	end_slice = index
 
-	# if the return window is outside of the array values, then we cannot check for non-wear time, since there is no data. Here we return
+	# if the start slice is negative, then we set it to 0 since there are no values with indexes lower than 0
 	if start_slice < 0:
-		# return False so we keep the wear time indication
-		return True
-	else:
-		# we look backwards
-		return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
-
-
+		# set start slice to zero to indicate the beginning of the list
+		start_slice = 0
+	
+	# return True or False if the window contains more than the min_count
+	return ((data[start_slice:end_slice] > threshold).sum()) >= min_count
