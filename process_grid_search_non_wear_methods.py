@@ -15,7 +15,7 @@ from joblib import delayed
 """
 	IMPORTED FUNCTIONS
 """
-from functions.helper_functions import set_start, set_end, get_subjects_with_invalid_data, calculate_vector_magnitude, save_pickle, load_pickle, create_directory, read_directory, get_current_timestamp
+from functions.helper_functions import set_start, set_end, get_subjects_with_invalid_data, calculate_vector_magnitude, save_pickle, load_pickle, create_directory, read_directory, get_current_timestamp, convert_short_code_to_long
 from functions.hdf5_functions import get_all_subjects_hdf5, get_datasets_from_group, read_dataset_from_group, save_data_to_group_hdf5
 from functions.datasets_functions import get_actigraph_acc_data, get_actigraph_epoch_data, get_actigraph_epoch_60_data
 from functions.ml_functions import get_confusion_matrix, calculate_classification_performance, create_train_test_split, return_stratified_k_folds
@@ -321,7 +321,7 @@ def perform_cv_grid_search(method, nw_method, num_jobs = cpu_count(), save_folde
 	
 	# calculate average of classification scores
 	for key, value in combined_training_results.items():
-		combined_training_results[key] = np.mean(value)
+		combined_training_results[key] = np.nanmean(value)
 
 	logging.info('='*60)	
 	logging.info('{}-Fold cross validation Training results: {}'.format(cv, combined_training_results))	
@@ -350,104 +350,108 @@ def perform_cv_grid_search(method, nw_method, num_jobs = cpu_count(), save_folde
 """
 	PLOT GRID SEARCH
 """
-def perform_plot_grid_search(nw_method, data_folder = os.path.join('files', 'grid-search', 'final')):
+def perform_plot_grid_search(nw_method, data_folder = os.path.join('files', 'grid-search', 'final_reverse_prec_rec_new_hecht')):
 
 	# load the classification data
 	data = load_pickle('grid-search-results-{}'.format(nw_method), data_folder)
 
-	# use classification
-	classification = 'f1'
+	# define classification metric to plot
+	classifications = ['accuracy', 'precision', 'recall', 'f1']
 
-	# dynamically create plot name
-	plot_name = 'grid_search_plot_{}_{}.pdf'.format(nw_method, classification)
-	# plot folder
-	plot_folder = os.path.join('plots', 'paper')
+	# start to plot each classification
+	for classification in classifications:
 
-	# skip parameters
-	skip_parameters, skip_combinations = [], []
-	# overwrite top values
-	overwrite = {} 
+		# dynamically create plot name
+		plot_name = 'grid_search_plot_{}_{}.pdf'.format(nw_method, classification)
+		# plot folder
+		plot_folder = os.path.join('plots', 'paper')
 
-	# skip parameter values completely
-	if nw_method == 'hecht':
+		# skip parameters
+		skip_parameters, skip_combinations = [], []
+		# overwrite top values
+		overwrite = {} 
+
+		# skip parameter values completely
+		if nw_method == 'hecht':
+			
+			# define plot parameters
+			plot_parameters = {	'num_rows' : 1,
+								'num_columns' : 3,
+								'figsize' : (9,3),
+								'annotations' : True,
+								'vmin' : 0,
+								'vmax' : .3,
+								'levels' : 11
+								}
+
+		if nw_method == 'troiano':
+			
+			skip_parameters = ['VM']
+			skip_combinations = ['AT_ST']	
+			
+			# overwrite = {'AT' : '50','ST' : '4'}
+
+			# define plot parameters
+			plot_parameters = {	'num_rows' : 2,
+								'num_columns' : 3,
+								'figsize' : (9,6),
+								'annotations' : True,
+								'vmin' : 0,
+								'vmax' : 1.,
+								'levels' : 9,
+								'remove_plots' : [-1]
+								}
+
+		if nw_method == 'choi':
+
+			skip_parameters = ['VM', 'AT']
+
+			# skip_combinations = ['ST_MWL']
+			# overwrite = {'ST' : '2'}
+
+			# define plot parameters
+			plot_parameters = {	'num_rows' : 2,
+								'num_columns' : 3,
+								'figsize' : (9,6),
+								'annotations' : True,
+								'vmin' : 0,
+								'vmax' : 1.,
+								'levels' : 11,
+								# 'remove_plots' : [-1]
+								}
 		
-		# define plot parameters
-		plot_parameters = {	'num_rows' : 1,
-							'num_columns' : 3,
-							'figsize' : (9,3),
-							'annotations' : False,
-							'vmin' : 0,
-							'vmax' : .3,
-							'levels' : 11
-							}
+		if nw_method == 'hees':
 
-	if nw_method == 'troiano':
-		
-		skip_parameters = ['VM']
-		skip_combinations = ['AT_ST']	
-		
-		# overwrite = {'AT' : '50','ST' : '4'}
+			skip_parameters = ['WO']
+			# skip_combinations = ['ST_VT']
+			# skip_combinations = ['VT_VA']
 
-		# define plot parameters
-		plot_parameters = {	'num_rows' : 1,
-							'num_columns' : 5,
-							'figsize' : (15,3),
-							'annotations' : False,
-							'vmin' : 0,
-							'vmax' : 1.,
-							'levels' : 9,
-							# 'remove_plots' : -1
-							}
+			# define plot parameters
+			plot_parameters = {	'num_rows' : 4,
+								'num_columns' : 3,
+								'figsize' : (9,12),
+								'annotations' : True,
+								'vmin' : 0,
+								'vmax' : 1.,
+								'levels' : 8,
+								'remove_plots' : [-2, -1]
+								}
 
-	if nw_method == 'choi':
+		# get grid search combinations, with parameter and labels
+		_, parameters, labels, default_parameters  = _get_grid_search_parameter_combinations(nw_method)
 
-		skip_parameters = ['VM', 'AT']
+		# empty dictionary to store plot data
+		plot_data, annotations = _get_plot_data(data, parameters, default_parameters, classification, skip_parameters, skip_combinations, overwrite)
 
-		skip_combinations = ['ST_MWL']
-		# overwrite = {'ST' : '2'}
-
-		# define plot parameters
-		plot_parameters = {	'num_rows' : 1,
-							'num_columns' : 5,
-							'figsize' : (15,3),
-							'annotations' : False,
-							'vmin' : 0,
-							'vmax' : 1.,
-							'levels' : 11,
-							# 'remove_plots' : -1
-							}
-	
-	if nw_method == 'hees':
-
-		skip_parameters = ['WO']
-		skip_combinations = ['ST_VT', 'VT_VA']
-
-		# define plot parameters
-		plot_parameters = {	'num_rows' : 2,
-							'num_columns' : 5,
-							'figsize' : (15,6),
-							'annotations' : False,
-							'vmin' : 0,
-							'vmax' : 1.,
-							'levels' : 8,
-							'remove_plots' : [-1, -2]
-							}
-
-	# get grid search combinations, with parameter and labels
-	_, parameters, labels  = _get_grid_search_parameter_combinations(nw_method)
-
-	# empty dictionary to store plot data
-	plot_data, annotations = _get_plot_data(data, parameters, classification, skip_parameters, skip_combinations, overwrite)
-
-	# call plot function
-	plot_grid_search(plot_data, labels, annotations, plot_parameters, plot_name, plot_folder)
+		# call plot function
+		plot_grid_search(plot_data, nw_method, classification, labels, annotations, plot_parameters, plot_name, plot_folder)
 
 
 
 """
 	OTHER PLOTS
 """
-def perform_plot_comparison_default_optimized(folder_results = os.path.join('files', 'grid-search', 'final_reverse_prec_rec')):
+def perform_plot_comparison_default_optimized(folder_results = os.path.join('files', 'grid-search', 'final_reverse_prec_rec_new_hecht')):
 
 	# results of grid search
 	hecht_data = load_pickle(file_name = 'grid-search-results-hecht.pkl', folder = folder_results)
@@ -510,11 +514,12 @@ def perform_plot_comparison_default_optimized(folder_results = os.path.join('fil
 	plot_classification_results_comparison_all(df_all)
 
 
+
 """
 	INTERNAL HELPER FUNCTIONS
 """
 
-def _get_plot_data(data, parameters, classification, skip_parameters = None, skip_combinations = None, overwrite = None):
+def _get_plot_data(data, parameters, default_parameters, classification, skip_parameters = None, skip_combinations = None, overwrite = None, fix_parameter_to_default = True):
 	"""
 	Create plot data for combinations of two parameters. For instance, create the dataframe comparing grid search values for AT and MLP
 
@@ -549,14 +554,8 @@ def _get_plot_data(data, parameters, classification, skip_parameters = None, ski
 	# give each parameter an index
 	par_index = dict(zip(parameters, range(len(parameters))))
 
-	# find values that produce the largest f1 score
+	# find values that produce the largest classification score (accuracy, precision, recall, f1)
 	top_results = sorted(data.items(), key = lambda item: item[1][classification], reverse = True)[0]
-
-	# annotations
-	annotations = {}
-	for par in parameters.keys():
-		if par not in skip_parameters:
-			annotations[par] = int(top_results[0].split('-')[par_index[par]])
 	
 	# empty dictionary to store dataframes to
 	plot_data = {}
@@ -586,11 +585,25 @@ def _get_plot_data(data, parameters, classification, skip_parameters = None, ski
 				
 					# get variables from top result (here we only have to change the row and column variable)
 					plot_results = top_results[0].split('-')
+					
 					# overwrite the row index
 					plot_results[par_index[first_par]] = row
 					# overwrite index that represents the column value
 					plot_results[par_index[second_par]] = column
 
+					# if set to True, then change fixing parameter to default value, instead of fixing it to the values that result in the best classification score
+					if fix_parameter_to_default:
+						# keep remaining values fixed to their default values
+						for fixed_par in parameters.keys():
+							# fixed parameter cannot be the parameter that we use on the x or y axis for the contour plots
+							if fixed_par not in [first_par,second_par]:
+								
+								# get the default value of the fixed parameter.
+								default_value = default_parameters[fixed_par]
+								
+								# change optimized parameter with the default parameter at the right location (obtained by looking at par_index)
+								plot_results[par_index[fixed_par]] = default_value
+						
 					# overwrite values (but not if part of combination)
 					for overwrite_key, overwrite_value in overwrite.items():
 						if overwrite_key not in plot_key:
@@ -605,7 +618,13 @@ def _get_plot_data(data, parameters, classification, skip_parameters = None, ski
 				# add the row data as a series to the dataframe
 				plot_data[plot_key][row] = pd.Series(row_data, index = parameters[second_par])
 	
-	return plot_data, annotations
+	# # annotations for top result
+	# annotations = {}
+	# for par in parameters.keys():
+	# 	if par not in skip_parameters:
+	# 		annotations[par] = int(top_results[0].split('-')[par_index[par]])
+
+	return plot_data, default_parameters
 
 def _get_hecht_grid_search_nw_vector(variables, data, reverse = True, s = 60, verbose = False):
 
@@ -845,7 +864,7 @@ def _get_grid_search_parameter_combinations(nw_method):
 		# threshold value in VMU
 		T = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50] # 10X
 		# time intervals in minutes
-		I = range(5, 100 + 1, 5) # 20x
+		I = range(5, 100 + 1, 5) # [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
 		# min count
 		M = [1, 2, 3, 4, 5] # 5x
 
@@ -855,11 +874,12 @@ def _get_grid_search_parameter_combinations(nw_method):
 		# parameters
 		parameters = {'T' : T, 'I' : I, 'M' : M}
 
-		# labels
-		labels = {	'T' : 'Threshold (VMU)', 
-					'I' : 'Window size (mins)', 
-					'M' : 'Allowed #spikes in window'}
-	
+		# default parameter values
+		default_parameters = {'T' : 5, 'I' : 20, 'M' : 2}
+
+		# get labels for each parameter
+		labels = {key : convert_short_code_to_long(key) for key in parameters.keys()}
+
 	elif nw_method == 'troiano':
 
 		# activity threshold (default :activity_threshold = 0)
@@ -877,12 +897,12 @@ def _get_grid_search_parameter_combinations(nw_method):
 
 		parameters = {'AT' : AT, 'MPL' : MPL, 'ST' : ST, 'SS' : SS, 'VM' : VM}
 
-		# define labels
-		labels = {	'AT' : 'Minimum spike threshold (counts)', 
-					'MPL' : 'Minimum interval (mins)', 
-					'ST' : 'Allowed #spikes',
-					'SS' : 'Maximum spike threshold (counts)'}
-	
+		# troiano default parameters '0-60-2-100-False'
+		default_parameters = {'AT' : 0, 'MPL' : 60, 'ST' : 2, 'SS' : 100, 'VM' : False}
+
+		# get labels for each parameter
+		labels = {key : convert_short_code_to_long(key) for key in parameters.keys()}
+
 	elif nw_method == 'choi':
 
 		# activity threshold (default = 0)
@@ -893,7 +913,7 @@ def _get_grid_search_parameter_combinations(nw_method):
 		ST = [1, 2, 3, 4, 5] # 6x
 		# minimum window length (default = 30)
 		MWL = [10, 20, 30, 40, 50, 60] # 6x
-		# number of spikes allowed in the second (default = window window_spike_tolerance = 0)
+		# number of spikes allowed in the second window (default = window window_spike_tolerance = 0)
 		WST = [0, 1, 2, 3, 4] # 5x
 		# use vector magnitude (default = False)
 		VM = [True, False] # 2x
@@ -902,11 +922,11 @@ def _get_grid_search_parameter_combinations(nw_method):
 
 		parameters = {'AT' : AT, 'MPL' : MPL, 'ST' : ST, 'MWL' : MWL, 'WST' : WST, 'VM' : VM }
 
-		labels = {	'AT' : 'Minimum spike threshold (counts)', 
-					'MPL' : 'Minimum interval (mins)', 
-					'ST' : 'Allowed #spikes',
-					'MWL' : 'Window size (mins)',
-					'WST' : 'Allowed #spikes in window'}
+		# default parameter '0-90-2-30-0-False'
+		default_parameters = {'AT' : 0, 'MPL' : 90, 'ST' : 2, 'MWL' : 30, 'WST' : 0, 'VM' : False }
+
+		# get labels for each parameter
+		labels = {key : convert_short_code_to_long(key) for key in parameters.keys()}
 
 	elif nw_method == 'hees':
 
@@ -927,7 +947,10 @@ def _get_grid_search_parameter_combinations(nw_method):
 		combinations = [f'{mw}-{wo}-{st}-{sa}-{vt}-{va}' for mw in MW for wo in WO for st in ST for sa in SA for vt in VT for va in VA]
 
 		parameters = {'MW' : MW, 'WO' : WO, 'ST' : ST, 'SA' : SA, 'VT' : VT, 'VA' : VA}
-	
+
+		# default paramters '60-15-3-2-50-2'
+		default_parameters = {'MW' : 60, 'WO' : 15, 'ST' : 3, 'SA' : 2, 'VT' : 50, 'VA' : 2}
+
 		# define labels
 		labels = {	'MW' : 'Minimum interval (mins)', 
 					'WO' : 'Window overlap',
@@ -941,7 +964,7 @@ def _get_grid_search_parameter_combinations(nw_method):
 		logging.error('Non wear method not implemented: {}'.format(nw_method))
 		exit()
 
-	return combinations, parameters, labels
+	return combinations, parameters, labels, default_parameters
 
 def _calculate_subject_combination_confusion_matrix(method, combination, subjects, nw_method, subject_combination_tracker = None, subjects_data = None, verbose = False, idx = 1, total = 1):
 
@@ -1054,7 +1077,7 @@ if __name__ == '__main__':
 	"""
 		2) perform grid search on all subjects
 	"""
-	perform_grid_search(method = 'epoch', nw_method = 'hecht')
+	# perform_grid_search(method = 'epoch', nw_method = 'hecht')
 	# perform_grid_search(method = 'epoch', nw_method = 'troiano')
 	# perform_grid_search(method = 'epoch', nw_method = 'choi')
 	# perform_grid_search(method = 'raw', nw_method = 'hees')
@@ -1062,7 +1085,7 @@ if __name__ == '__main__':
 	"""
 		3) perform cross validated grid search
 	"""
-	perform_cv_grid_search(method = 'epoch', nw_method = 'hecht')
+	# perform_cv_grid_search(method = 'epoch', nw_method = 'hecht')
 	# perform_cv_grid_search(method = 'epoch', nw_method = 'troiano')
 	# perform_cv_grid_search(method = 'epoch', nw_method = 'choi')
 	# perform_cv_grid_search(method = 'raw', nw_method = 'hees')
@@ -1070,14 +1093,16 @@ if __name__ == '__main__':
 	"""
 		4) plot grid search analysis contourplot
 	"""
-	# perform_plot_grid_search(nw_method = 'hecht')
-	# perform_plot_grid_search(nw_method = 'troiano')
-	# perform_plot_grid_search(nw_method = 'choi')
-	# perform_plot_grid_search(nw_method = 'hees')
+	perform_plot_grid_search(nw_method = 'hecht')
+	perform_plot_grid_search(nw_method = 'troiano')
+	perform_plot_grid_search(nw_method = 'choi')
+	perform_plot_grid_search(nw_method = 'hees')
 
 	"""
 		OTHER PLOTS
 	"""
+	
 	# perform_plot_comparison_default_optimized()
+
 
 	set_end(tic, process)

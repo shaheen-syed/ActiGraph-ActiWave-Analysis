@@ -72,6 +72,7 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		subset_data = data[start:end]
 
 		# check if the data sequence has been exhausted, meaning that there are no full windows left in the data sequence (this happens at the end of the sequence)
+		# comment out if you want to use all the data
 		if len(subset_data) < min_non_wear_time_window:
 			break
 

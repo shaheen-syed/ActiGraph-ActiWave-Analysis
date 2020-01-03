@@ -29,6 +29,7 @@ ACTIGRAPH_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIGRAPH_TU7.hd
 # ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'Volumes', 'LaCie', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
 ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE = os.path.join(os.sep, 'users', 'shaheensyed', 'hdf5', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5')
 
+
 def batch_process_non_wear_algorithm(algorithm, limit = None, skip_n = 0, use_parallel = True, num_jobs = cpu_count(), save_hdf5 = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE):
 	"""
 	Batch process finding non-wear time based on the following algorithms:
@@ -533,7 +534,7 @@ if __name__ == "__main__":
 	tic, process, logging = set_start()
 
 	# 1) batch process Hecht 2009 non-wear method
-	# batch_process_non_wear_algorithm(algorithm = process_hecht_2009_triaxial)
+	batch_process_non_wear_algorithm(algorithm = process_hecht_2009_triaxial)
 
 	# # 2) batch process Troiano 2007 non-wear method
 	# batch_process_non_wear_algorithm(algorithm = process_troiano_2007)
@@ -545,7 +546,7 @@ if __name__ == "__main__":
 	# batch_process_non_wear_algorithm(algorithm = process_hees_2013)
 	
 	# 5) batch process the plotting of the non-wear algorithms including true non-wear time
-	batch_process_plot_non_wear_algorithms()
+	# batch_process_plot_non_wear_algorithms()
 
 	# print time and memory
 	set_end(tic, process)

@@ -1480,89 +1480,55 @@ def process_plot_classification_results(data_folder = os.path.join('files', 'cla
 	plot_classification_results(data, data_filtered)
 
 
-def process_plot_time_distribution():
+def process_plot_time_distribution(load_from_file = True):
 
-	# get all the subjects from the hdf5 file and remove subjects with invalid data
-	subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
-	
-	# list with time stamps per minute/per hour
-	full_time_range = pd.date_range('2017-01-01 00:00', '2017-01-01 23:59', freq = '1T')
+	if not load_from_file:
+		# read subjects
+		subjects = [s for s in get_all_subjects_hdf5(hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE) if s not in get_subjects_with_invalid_data()]
 
-	# empty dictionary with hour-minute of the day and 0 counter (will be filled later)
-	time_subjects = {'{}:{}'.format(str(x.hour).zfill(2), str(x.minute).zfill(2)) : 0 for x in full_time_range}
-	time_nw = {'{}:{}'.format(str(x.hour).zfill(2), str(x.minute).zfill(2)) : 0 for x in full_time_range}
-	
-	# loop over each subject, get the time distribution
-	for i, subject in enumerate(subjects):
-
-		logging.info('{style} Processing subject : {} {}/{} {style}'.format(subject, i, len(subjects), style = '='*10))
-
-		# read data from HDF5
-		data = read_dataset_from_group(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+		# get a list with only hours, value is [all, < 1 hour, > 1 hour]
+		hours = {str(x.hour).zfill(2) : [0,0,0] for x in pd.date_range('2017-01-01 00:00', '2017-01-01 23:59', freq = '60T')}
 		
-		# check if data is not None
-		if data is None:
-			logging.warning('Dataset returned with None value. Skipping subject {}...'.format(subject))
-			continue
+		# loop over each subject, get the time distribution
+		for i, subject in enumerate(subjects):
+
+			logging.info('{style} Processing subject : {} {}/{} {style}'.format(subject, i, len(subjects), style = '='*10))
+
+			*_, actigraph_time = get_actigraph_acc_data(subject, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+
+			# true non wear time
+			true_non_wear_time = 1 - read_dataset_from_group(group_name = subject, dataset = 'actigraph_true_non_wear', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+
+			# downscale array for faster processing
+			true_non_wear_time = true_non_wear_time[::100*60]
+			actigraph_time = actigraph_time[::100*60]
+
+			# create dataframe of true non wear time
+			df = pd.DataFrame(true_non_wear_time, index = actigraph_time, columns = ['nw'])
+			
+			for _, group in df.groupby(df.index.hour).nw:
+
+				# get the hour
+				group_hour = group.index.strftime('%H')[0]
+
+				# if group is larger than zero, then some non-wear is identified
+				if group.sum() > 0:
+					
+					# add one to hours dictionary
+					hours[group_hour][0] +=1
+					
+					# add 
+					if group.sum() <= 59:
+						hours[group_hour][1] +=1
+					else:
+						hours[group_hour][2] +=1
 		
-		# get meta data with classification statistics
-		meta_data = read_metadata_from_group_dataset(group_name = subject, dataset = 'non_wear_data', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
-		
-		# read start_datetime and remove from dictionary at the same time and convert to datetime64
-		start_datetime = np.asarray(meta_data.pop('start_datetime'), dtype='datetime64[ns]')
-		
-		# convert start_datetime into an array with timestamps per second with the length being equal to the length of the data
-		time_data = np.asarray(start_datetime, dtype='datetime64[s]') + np.asarray(np.arange(data.shape[0]), dtype='timedelta64[s]')
+		# save hours to temp file
+		save_pickle(hours, 'hours', 'files')
+	else:
+		hours = load_pickle('hours', 'files')
 
-		# create Pandas Dataframe
-		df_subjects = pd.DataFrame(time_data, columns = ['time'])
-		# set time data as index
-		df_subjects.set_index('time', inplace = True)
-		# resample per minute
-		df_subjects = df_subjects.resample('1T').sum()
-
-		# loop over each index and add 1 if hour:min of the day is present
-		for row_index in df_subjects.index:
-			time_subjects['{}:{}'.format(str(row_index.hour).zfill(2), str(row_index.minute).zfill(2))] += 1 
-
-		# filter for non wear time
-		nw_time = time_data[data[:,0] == 1]
-
-		# create Pandas Dataframe
-		df_nw = pd.DataFrame(nw_time, columns = ['time'])
-		# set time data as index
-		df_nw.set_index('time', inplace = True)
-		# resample per minute
-		df_nw = df_nw.resample('1T').sum()
-
-		# loop over rows in dataframe and append counter to time dictionary
-		for row_index in df_nw.index:
-			time_nw['{}:{}'.format(str(row_index.hour).zfill(2), str(row_index.minute).zfill(2))] += 1 
-
-	# convert time dictionary to pandas dataframe; 
-	df_time_subjects = pd.DataFrame(time_subjects.values(), index = time_subjects.keys(), columns = ['subject frequency'])
-	# set time index as the new dataframe index
-	df_time_subjects.set_index(full_time_range, inplace = True)
-
-	# convert time dictionary to pandas dataframe; 
-	df_time_nw = pd.DataFrame(time_nw.values(), index = time_nw.keys(), columns = ['nw frequency'])
-	# set time index as the new dataframe index
-	df_time_nw.set_index(full_time_range, inplace = True)
-	# join two dataframes together
-	df = df_time_subjects.join(df_time_nw, how = 'inner')
-	# resample to 10 minutes (this will also sum up the values on the minute scale)
-	df = df.resample('10T').sum()
-
-	# correct frequency that was the result of resampling to 10min intervals
-	df['subject frequency'] /= 10.
-	df['nw frequency'] /= 10.
-
-	# calculate percentage of non-wear time
-	df['nw percentage'] = df['nw frequency'] / df['subject frequency'] * 100
-
-	# call plot function
-	plot_time_distribution(df, full_time_range)
-
+	plot_time_distribution(hours)
 
 def process_plot_nw_scenarios(read_from_file = True):
 
@@ -1631,7 +1597,7 @@ def process_plot_nw_scenarios(read_from_file = True):
 	plot_nw_scenarios(data)
 
 
-def process_table_cv_classification(grid_search_folder = os.path.join('files', 'grid-search', 'final_reverse_prec_rec'), cv_grid_search_folder = os.path.join('files', 'grid-search-cv', 'split3-false_reverse')):
+def process_table_cv_classification(grid_search_folder = os.path.join('files', 'grid-search', 'final_reverse_prec_rec_new_hecht'), cv_grid_search_folder = os.path.join('files', 'grid-search-cv', 'split3-false_reverse_new_hecht')):
 
 	classification_metrics = ['accuracy', 'precision', 'recall', 'f1']
 
@@ -1837,6 +1803,9 @@ def process_nw_time_overview(read_from_file = True):
 
 	# empty dictionary where we can store the lengths of the non wear time
 	dic_segments = {}
+
+	# keep track of the total duration
+	total_data = []
 		
 	# loop over each subject, get the time distribution
 	for i, subject in enumerate(subjects):
@@ -1847,6 +1816,9 @@ def process_nw_time_overview(read_from_file = True):
 		subject_true_nw = 1 - read_dataset_from_group(group_name = subject, dataset = 'actigraph_true_non_wear', hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE).astype('uint8').reshape(-1,1)
 		# convert to 1s instead of 100hz
 		subject_true_nw = subject_true_nw[::100]
+
+		# add length in minutes of data to total data
+		total_data.append(len(subject_true_nw) // 60)
 
 		"""
 			GET LENGTH NON WEAR SEGMENTS
@@ -1873,6 +1845,25 @@ def process_nw_time_overview(read_from_file = True):
 
 	# convert to numpy array
 	data = np.array(data)
+	logging.info('Total length of data: {}hrs'.format(np.sum(total_data) / 60))
+	logging.info('Frequency of nw-time episodes: {}'.format(len(data)))
+	logging.info('Mean of nw-time episodes: {}'.format(np.mean(data)))
+	logging.info('SD of nw-time episodes: {}'.format(np.std(data)))
+	logging.info('Total nw-time : {}hrs ({})'.format(np.sum(data) / 60, np.sum(data) / np.sum(total_data) * 100))
+
+	# shorter than 60 minutes
+	data_shorter = data[data < 60]
+	logging.info('Shorter than 60 minutes:')
+	logging.info('Frequency of nw-time episodes: {} {}'.format(len(data_shorter), len(data_shorter) / len(data) * 100))
+	logging.info('Mean of nw-time episodes: {}'.format(np.mean(data_shorter)))
+	logging.info('SD of nw-time episodes: {}'.format(np.std(data_shorter)))
+
+	# 60 minutes or longer
+	data_longer = data[data >= 60]
+	logging.info('Longer or equal than 60 minutes:')
+	logging.info('Frequency of nw-time episodes: {} {}'.format(len(data_longer), len(data_longer) / len(data) * 100))
+	logging.info('Mean of nw-time episodes: {}'.format(np.mean(data_longer)))
+	logging.info('SD of nw-time episodes: {}'.format(np.std(data_longer)))
 
 	# plot data
 	plot_nw_distribution(data)
@@ -2303,10 +2294,10 @@ if __name__ == "__main__":
 	# process_plot_nw_scenarios()
 
 	# table with classification results for all, grid search and cv grid search + best parameter values
-	process_table_cv_classification()
+	# process_table_cv_classification()
 
 	# get overview of distribution of non-wear times
-	# process_nw_time_overview()
+	process_nw_time_overview()
 
 	# get dataset characteristics (gender, height, weight, bmi, etc)
 	# process_dataset_characteristics()

@@ -611,8 +611,8 @@ def get_subject_counters_for_correction(subject):
 
 def convert_short_code_to_long(short_code):
 
-	labels = {	'T' : 'Threshold (VMU)', 
-				'I' : 'Window size (mins)', 
+	labels = {	'T' : 'VMU Threshold', 
+				'I' : 'Up/Down window size (mins)', 
 				'M' : 'Allowed #spikes in window',
 				'AT' : 'Minimum spike threshold (counts)', 
 				'MPL' : 'Minimum interval (mins)', 

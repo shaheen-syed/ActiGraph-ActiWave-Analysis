@@ -843,58 +843,56 @@ def plot_roc_curve(fpr, tpr, auc):
 	plt.show()
 
 
+def plot_time_distribution(data, plot_folder = os.path.join('plots', 'paper'), plot_name = 'time_distribution.pdf'):
 
-
-def plot_time_distribution(data, full_time_range, plot_folder = os.path.join('plots', 'test'), plot_name = 'time_distribution.pdf'):
-	"""
-	plot distribution over hours of the day for all subjects
-
-	Parameters
-	----------
-	data : pd.DataFrame()
-		pandas dataframe with ['subject frequency'], ['nw frequency'], and ['nw percentage']
-	plot_foler : os.path (optional)
-		folder to store figure in
-
-	"""
-	# import pandas as pd
-	# # list with time stamps per minute/per hour
-	# hour_min_range = pd.date_range('2017-01-01 00:00', '2017-01-01 23:59', freq = '1T')
-	
 	# setting up the plot environment
 	fig, axs = plt.subplots(1, 3, figsize = (15, 5))
 	axs = axs.ravel()
 	
 	# create the x labels
-	x_labels = ['{}:{}'.format(str(x.hour).zfill(2), str(x.minute).zfill(2)) for x in full_time_range]
-	x = np.arange(len(data.index))
+	x_labels = ['{}:00'.format(x) for x in data.keys()]
+	# x ticks
+	x = np.arange(len(x_labels))	
 
 	# plot settings
-	width = .8
+	width = .9
 	linewidth = 0
-	align = 'center'
-	
-	axs[0].bar(x, data['subject frequency'], width = width, align = align, color = '#1b9e77', linewidth = linewidth)
-	axs[0].set_title('Distribution Activity data (frequency)')
-	
-	axs[1].bar(x, data['nw frequency'], width = width, align = align, color = '#d95f02', linewidth = linewidth)
-	axs[1].set_title('Distribution non-wear data (frequency)')
-	
-	axs[2].bar(x, data['nw percentage'], width = width, align = align, color = '#7570b3', linewidth = linewidth)
-	axs[2].set_title('Relative Distribution non-wear data (%)')
+	align = 'edge'
+	colors = ['#1b9e77','#d95f02','#7570b3']
+	titles = ['All non-wear time', '< 60 mins non-wear time', '>= 60 mins non-wear time']
+
+	for i in range(3):
+		
+		total = sum([x[i] for x in data.values()])
+
+		bars = axs[i].bar(x, [x[i] for x in data.values()], width = width, align = align, color = colors[i], linewidth = linewidth)
+		axs[i].set_title(titles[i])
+		axs[0].set_ylabel('Absolute frequency')
+
+		# plot bar height on top of bar
+		for rect in bars:
+			height = rect.get_height()
+			
+			if height != 0:
+
+				axs[i].text(rect.get_x() + rect.get_width() / 2.0, height, ' {} %'.format(round(height / total * 100, 1)), rotation = 90, ha='center', va='bottom', fontsize=10)
+			
 
 	# adjust all the axes
 	for ax in axs:
 
 		# set x labels (only take every hour)
-		ax.set_xticklabels(x_labels[::60])
+		ax.set_xticklabels(x_labels)
 		# set x ticks
-		ax.set_xticks(x[::6])
+		ax.set_xticks(x)
 		# no grid lines
 		ax.grid(False)
 		# no padding on x axis
 		ax.margins(x = 0)
+		# ticks
+		ax.tick_params(axis='both', left = True, bottom = True, which='both')
 		
+		ax.set_ylim(0,50)
 		# rotate all the x tick labels
 		for tick in ax.get_xticklabels():
 			tick.set_rotation(45)
@@ -911,73 +909,10 @@ def plot_time_distribution(data, full_time_range, plot_folder = os.path.join('pl
 	plt.close()
 
 
-def plot_grid_search(data, labels, annotations, plot_parameters, plot_name, plot_folder = os.path.join('plots', 'test2')):
-
-
-	fig, axs = plt.subplots(plot_parameters['num_rows'], plot_parameters['num_columns'], figsize = plot_parameters['figsize'])
-	axs = axs.ravel()
-
-	# loop over data
-	counter = 0
-	for combination, df in data.items():
-
-		# get the x and y label
-		x_label, y_label = combination.split('_')
-		
-		x = df.columns
-		y = df.index
-		X, Y = np.meshgrid(x, y)
-		Z = df.values
-				
-		cs = axs[counter].contour(X, Y, Z, levels = plot_parameters['levels'], cmap='magma_r', vmin = plot_parameters['vmin'], vmax= plot_parameters['vmax'],  linewidths=2)
-		axs[counter].clabel(cs, inline = True, fontsize=12)
-
-		# set axes title
-		axs[counter].set_xlabel(labels[x_label])
-		axs[counter].set_ylabel(labels[y_label])
-		# remove grid lines
-		axs[counter].grid(False)
-
-		axs[counter].locator_params(integer=True)
-
-		if plot_parameters['annotations']:
-			# plot the a dot to indicate optimal parameter values
-			dot = axs[counter].plot(annotations[x_label], annotations[y_label], 'ro', zorder = 10)
-			# make sure the dot is on top of axes splines
-			dot[0].set_clip_on(False)
-		
-			# colors = ['r', 'g']
-			# lines = [Line2D([0], [0], markersize = 10, marker = 'o', color = 'w', markerfacecolor=c) for c in colors]
-			# legend_labels = ['default', 'optimized']
-			# leg = axs[0].legend(lines, legend_labels, frameon=False)
-			# leg.set_alpha(1)
-			# leg.set_zorder(102)
-			# leg.get_frame().set_facecolor('w')
-			# annotate
-			# axs[counter].annotate('default', (default_x, default_y))
-			# axs[counter].annotate('optimized', (top_x, top_y))
-
-		counter +=1
-
-	# remove plots if parameter is set
-	if plot_parameters.get('remove_plots') is not None:
-		[axs[x].set_visible(False) for x in plot_parameters['remove_plots']] 
-
-	# crop white space
-	fig.set_tight_layout(True)
-	# create the plot folder if not exist already
-	create_directory(plot_folder)
-	# create the save location
-	save_location = os.path.join(plot_folder, plot_name)
-	# save the figure
-	fig.savefig(save_location)
-	# close the figure environemtn
-	plt.close()
-
 def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), plot_name = 'nw-scenarios.png'):
 
 	# plt.style.use("bmh")
-	fig, axs = plt.subplots(3, 3, figsize = (35,10))
+	fig, axs = plt.subplots(3, 3, figsize = (20,15))
 	axs = axs.ravel()
 
 	# define colors
@@ -1001,7 +936,7 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 		# plot acceleration Z
 		axs[0 + cnt].plot(data['ACTIGRAPH Z'], label = 'Z', color = c[2])
 		# set the y axis limit
-		axs[0 + cnt].set_ylim((-4,4))
+		axs[0 + cnt].set_ylim((-3,3))
 		# set inner title
 		axs[0 + cnt].text(0.5 ,.9,'ActiGraph accelerometer', horizontalalignment='center', transform = axs[0 + cnt].transAxes, fontdict = {'size' : 20})
 		
@@ -1013,14 +948,14 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 		# plot candidate non-wear segment (episode)
 		if cnt == 2:
 			# for illustrative purposes, only show the last candidate episode
-			axs[0 + cnt].scatter( y = np.repeat(-2,len(candidate_segment[70:])),  x = candidate_segment[70:].index, c = 'r', s = 1)
-			axs[0 + cnt].scatter( y = -2,  x = candidate_segment[70:].index[0], c = 'r', s = 50, marker = '<')
-			axs[0 + cnt].scatter( y = -2,  x = candidate_segment[70:].index[-1], c = 'r', s = 50, marker = '>')
+			axs[0 + cnt].scatter( y = np.repeat(-1.7,len(candidate_segment[70:])),  x = candidate_segment[70:].index, c = 'r', s = 1)
+			axs[0 + cnt].scatter( y = -1.7,  x = candidate_segment[70:].index[0], c = 'r', s = 50, marker = '<')
+			axs[0 + cnt].scatter( y = -1.7,  x = candidate_segment[70:].index[-1], c = 'r', s = 50, marker = '>')
 		else:
 			# plot non wear as scatter
-			axs[0 + cnt].scatter( y = np.repeat(-2,len(candidate_segment)),  x = candidate_segment.index, c = 'r', s = 1)
-			axs[0 + cnt].scatter( y = -2,  x = candidate_segment.index[0], c = 'r', s = 50, marker = '<')
-			axs[0 + cnt].scatter( y = -2,  x = candidate_segment.index[-1], c = 'r', s = 50, marker = '>')
+			axs[0 + cnt].scatter( y = np.repeat(-1.7,len(candidate_segment)),  x = candidate_segment.index, c = 'r', s = 1)
+			axs[0 + cnt].scatter( y = -1.7,  x = candidate_segment.index[0], c = 'r', s = 50, marker = '<')
+			axs[0 + cnt].scatter( y = -1.7,  x = candidate_segment.index[-1], c = 'r', s = 50, marker = '>')
 			
 		"""
 			Actiwave acceleration
@@ -1032,7 +967,7 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 		# plot acceleration Z
 		axs[3 + cnt].plot(data['ACTIWAVE Z'].dropna(), label = 'Z', color = c[2])
 		# set the y axis limit
-		axs[3 + cnt].set_ylim((-4,4))
+		axs[3 + cnt].set_ylim((-3,3))
 		# set the title
 		axs[3 + cnt].text(0.5 ,.9,'ActiWave Cardio accelerometer', horizontalalignment='center', transform = axs[3 + cnt].transAxes, fontdict = {'size' : 20})
 
@@ -1051,6 +986,7 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 		# set the title
 		axs[6 + cnt].text(0.5 ,.9,'ActiWave Cardio Heart Rate', horizontalalignment='center', transform = axs[6 + cnt].transAxes, fontdict = {'size' : 20})
 
+
 		# increment counter
 		cnt += 1
 
@@ -1062,7 +998,7 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 		# no grid lines
 		ax.grid(False)
 		# define format of dates
-		xfmt = md.DateFormatter('%H:%M')
+		xfmt = md.DateFormatter('%H:00')
 		# define hours
 		hours = md.HourLocator(interval = 1)
 		# change the x-axis to show hours:
@@ -1070,26 +1006,29 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 		# change the x-axis format
 		ax.xaxis.set_major_formatter(xfmt)
 		# change font size x acis
-		ax.xaxis.set_tick_params(labelsize=20)
+		ax.xaxis.set_tick_params(labelsize=16)
 		# change font size y acis
-		ax.yaxis.set_tick_params(labelsize=20)
-		# set the legend
-		ax.legend(loc='upper left', prop={'size': 20})
+		ax.yaxis.set_tick_params(labelsize=16)
+		# ticks
+		ax.tick_params(axis='both', left = True, bottom = True, which='both')
+
 		# make sure the x-axis has no white space
 		ax.margins(x = 0)
 
 		# only x axis on bottom plots
 		if i not in [6, 7, 8]:
 			ax.get_xaxis().set_visible(False)
+			# set the legend
+			ax.legend(loc='lower left', prop={'size': 20})
 		
 		# only y axis on left plots
 		if i not in [0, 3, 6]:
 			ax.get_yaxis().set_visible(False)
 
 	# titles on top of top plots
-	axs[0].set_title('A', fontdict = {'size' : 20})
-	axs[1].set_title('B', fontdict = {'size' : 20})
-	axs[2].set_title('C', fontdict = {'size' : 20})
+	axs[0].set_title('(a)', fontdict = {'size' : 20, 'fontweight' : 'bold'})
+	axs[1].set_title('(b)', fontdict = {'size' : 20, 'fontweight' : 'bold'})
+	axs[2].set_title('(c)', fontdict = {'size' : 20, 'fontweight' : 'bold'})
 
 	# define y axis labels
 	axs[0].set_ylabel('acceleration (g)', fontsize = 20)
@@ -1138,11 +1077,13 @@ def plot_nw_distribution(data, plot_name = 'distribution-of-nw-times.pdf', plot_
 	bins_first = [1] + list(range(5,61,5))
 	axs[0].hist(data, bins = bins_first, color = '#43a2ca')
 	axs[0].set_xticks(bins_first)
+	axs[0].set_title('(a)', fontdict = {'fontweight' : 'bold'})
 
 	# second histogram
 	bins_second = range(60,601,60)
 	axs[1].hist(data, bins = bins_second, color = '#43a2ca')
 	axs[1].set_xticks(bins_second)
+	axs[1].set_title('(b)', fontdict = {'fontweight' : 'bold'})
 
 	# adjust the axes
 	for ax in axs:
@@ -1150,6 +1091,7 @@ def plot_nw_distribution(data, plot_name = 'distribution-of-nw-times.pdf', plot_
 		ax.set_ylabel('Frequency')
 		ax.grid(False)
 		ax.tick_params(axis='both', left = True, bottom = True, which='both')
+
 
 	# crop white space
 	fig.set_tight_layout(True)
@@ -1204,7 +1146,7 @@ def plot_classification_results(data, data_filtered, plot_name = 'classification
 		# plot bar height on top of bar
 		for rect in bars:
 			height = rect.get_height()
-			axs[i].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 2), ha='center', va='bottom')
+			axs[i].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 3), ha='center', va='bottom', fontsize=9)
 	
 		# adjust the plot
 		axs[i].set_xticks(x + width/2)
@@ -1214,6 +1156,8 @@ def plot_classification_results(data, data_filtered, plot_name = 'classification
 		axs[i].set_ylim(0,1.1)
 		axs[1].legend(loc='best', prop={'size': 10})
 		axs[i].set_title('{}'.format(metric))
+		axs[i].tick_params(axis='both', left = True, bottom = True, which='both')
+
 	
 	# crop white space
 	fig.set_tight_layout(True)
@@ -1264,7 +1208,7 @@ def plot_classification_results_comparison(df, plot_name ='classification_perfor
 			# plot bar height on top of bar
 			for rect in bars:
 				height = rect.get_height()
-				axs[cnt].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 2), ha='center', va='bottom')
+				axs[cnt].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 3), ha='center', va='bottom')
 		
 		# adjust the plot
 		axs[cnt].set_xticks(np.arange(len(data)) + width/2)
@@ -1272,7 +1216,7 @@ def plot_classification_results_comparison(df, plot_name ='classification_perfor
 		axs[cnt].grid(True, 'major', ls = '--')
 		axs[0].set_ylabel('score')
 		axs[cnt].set_ylim(0,1.1)
-		axs[2].legend(['default', 'optimized'], loc='upper left', prop={'size': 10})
+		axs[1].legend(['default', 'optimized'], loc='upper left', prop={'size': 10})
 		axs[cnt].set_title('{}'.format(column))
 
 	# crop white space
@@ -1338,16 +1282,104 @@ def plot_classification_results_comparison_all(df, plot_name ='classification_pe
 			# plot bar height on top of bar
 			for rect in bars:
 				height = rect.get_height()
-				axs[ax_idx].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 2), ha='center', va='bottom')
+				axs[ax_idx].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 3), ha='center', va='bottom')
 		
 			# adjust the plot
 			axs[ax_idx].set_xticks(np.arange(len(data)) + width/2)
 			axs[ax_idx].set_xticklabels(['accuracy', 'precision', 'recall', 'f1'])
 			axs[ax_idx].grid(True, 'major', ls = '--')
-			axs[cnt * 3].set_ylabel('score')
+			axs[cnt * 4].set_ylabel('score')
 			axs[ax_idx].set_ylim(0,1.1)
-			axs[cnt].legend(['default', 'optimized'], loc='upper right', prop={'size': 10})
+			axs[cnt].legend(['default', 'optimized'], loc='best', prop={'size': 10})
 			axs[ax_idx].set_title('{} - Optimized for {}'.format(column, metric))
+			axs[ax_idx].tick_params(axis='both', left = True, bottom = True, which='both')
+
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, plot_name)
+	# save the figure
+	fig.savefig(save_location)
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_grid_search(data, nw_method, classification, labels, annotations, plot_parameters, plot_name, plot_folder):
+	"""
+	Contour plots of grid search results
+
+	Parameters
+	----------
+	data : dict()
+		dictionary with plot data
+	labels : dict()
+		dictionary with x-axis and y-axis labels
+	"""
+
+	fig, axs = plt.subplots(plot_parameters['num_rows'], plot_parameters['num_columns'], figsize = plot_parameters['figsize'])
+	axs = axs.ravel()
+
+	# loop over data
+	counter = 0
+	for combination, df in data.items():
+
+		# get the x and y label
+		x_label, y_label = combination.split('_')
+		
+		x = df.columns
+		y = df.index
+		X, Y = np.meshgrid(x, y)
+		Z = df.values
+
+
+		cs = axs[counter].contour(X, Y, Z, cmap='magma_r', linewidths = 2)#levels = plot_parameters['levels'], vmin = plot_parameters['vmin'], vmax= plot_parameters['vmax'] )
+		axs[counter].clabel(cs, inline = True, fontsize=8, inline_spacing = 1)
+
+		# set axes title
+		axs[counter].set_xlabel(labels[x_label])
+		# set ticks
+		axs[counter].tick_params(axis='both', left = True, bottom = True, which='both')
+
+
+		axs[counter].set_ylabel(labels[y_label])
+		# remove grid lines
+		axs[counter].grid(False)
+
+		axs[counter].set_title('{} {}'.format(nw_method.title(), classification.title()), fontsize=10)
+
+
+		axs[counter].locator_params(integer=True)
+
+
+		if plot_parameters['annotations']:
+			# plot the a dot to indicate optimal parameter values
+			dot = axs[counter].plot(annotations[x_label], annotations[y_label], marker = 'o', color = '#1b9e77')
+			# make sure the dot is on top of axes splines
+			dot[0].set_clip_on(False)
+
+			if int(annotations[y_label]) != 0:
+				axs[counter].axhline(y = annotations[y_label], linestyle = '--', color = 'black', alpha = 0.5, zorder = -10, linewidth = 0.8)
+			axs[counter].axvline(x = annotations[x_label], linestyle = '--', color = 'black', alpha = 0.5, zorder = -10, linewidth = 0.8)
+		
+			# colors = ['r', 'g']
+			# lines = [Line2D([0], [0], markersize = 10, marker = 'o', color = 'w', markerfacecolor=c) for c in colors]
+			# legend_labels = ['default', 'optimized']
+			# leg = axs[0].legend(lines, legend_labels, frameon=False)
+			# leg.set_alpha(1)
+			# leg.set_zorder(102)
+			# leg.get_frame().set_facecolor('w')
+			# annotate
+			# axs[counter].annotate('default', (default_x, default_y))
+			# axs[counter].annotate('optimized', (top_x, top_y))
+
+		counter +=1
+
+	# remove plots if parameter is set
+	if plot_parameters.get('remove_plots') is not None:
+		[axs[x].set_visible(False) for x in plot_parameters['remove_plots']] 
 
 	# crop white space
 	fig.set_tight_layout(True)
