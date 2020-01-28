@@ -266,7 +266,7 @@ def extract_log(log_bin, acceleration_scale, sample_rate, use_scaling = False):
 
 				TODO: calculate checksum from payload and header and see if it matches the checksum that we read from the last byte
 				"""	
-				# checksum = unpack("B", file.read(1))
+				checksum = unpack("B", file.read(1))
 
 				# stop when all records have been read
 				if COUNTER == SIZE:
