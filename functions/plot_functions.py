@@ -5,11 +5,13 @@
 """
 import logging
 import os
+import math
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
+from math import sqrt
 import matplotlib.dates as dates
 import matplotlib.dates as md
 from matplotlib import colors
@@ -359,8 +361,6 @@ def plot_raw_and_epoch_activity_data_by_day(data, plot_folder, subject, plot_raw
 	plt.close()
 
 
-
-
 def plot_actiwave_data(actigraph_acc, actiwave_acc, actiwave_hr, actiwave_ecg, plot_folder, subject):
 
 	"""
@@ -509,24 +509,43 @@ def plot_non_wear_data(actigraph_acc, actiwave_acc, actiwave_hr, plot_folder, su
 		"""
 			ACTIGRAPH NON WEAR TIME
 		"""
-		# extract only non-wear time from dataframe column
-		non_wear_time = actigraph_acc['NON-WEAR'].loc[actigraph_acc['NON-WEAR'] == 0]
-		# make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
-		non_wear_time = non_wear_time.iloc[::2000]
-		# plot non wear as scatter
-		axs[0].scatter( y = np.repeat(-4.9,len(non_wear_time)),  x = non_wear_time.index, c = 'red', s = 60)
+
+		# loop over each row in annotations dataframe
+		for _, row in annotations.iterrows():
+
+			# green for true non-wear time
+			c = 'red' if row['label'] == 1 else 'green'
+
+			counter = row['counter']
+			start = row['start']
+			stop = row['stop']
+
+			nw_time_range = actigraph_acc.loc[start:stop].index[::1000]
+			
+			axs[0].scatter( y = np.repeat(-4.9, len(nw_time_range)),  x = nw_time_range, c = c, s = 60)
+
+			axs[0].annotate(s = counter, xy = (start, -4.), fontsize = 20, rotation = 90)
+
+		# 	break
+
+		# # extract only non-wear time from dataframe column
+		# non_wear_time = actigraph_acc['NON-WEAR'].loc[actigraph_acc['NON-WEAR'] == 0]
+		# # make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
+		# non_wear_time = non_wear_time.iloc[::2000]
+		# # plot non wear as scatter
+		# axs[0].scatter( y = np.repeat(-4.9,len(non_wear_time)),  x = non_wear_time.index, c = 'red', s = 60)
 
 
-		# extract only non-wear time from dataframe column
-		final_non_wear_time = actigraph_acc['NON-WEAR-FINAL'].loc[actigraph_acc['NON-WEAR-FINAL'] == 0]
-		# make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
-		final_non_wear_time = final_non_wear_time.iloc[::2000]
-		# plot non wear as scatter
-		axs[0].scatter( y = np.repeat(-4.5,len(final_non_wear_time)),  x = final_non_wear_time.index, c = 'green', s = 60)
+		# # extract only non-wear time from dataframe column
+		# final_non_wear_time = actigraph_acc['NON-WEAR-FINAL'].loc[actigraph_acc['NON-WEAR-FINAL'] == 0]
+		# # make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
+		# final_non_wear_time = final_non_wear_time.iloc[::2000]
+		# # plot non wear as scatter
+		# axs[0].scatter( y = np.repeat(-4.5,len(final_non_wear_time)),  x = final_non_wear_time.index, c = 'green', s = 60)
 
-		# plot annotations
-		for an in annotations:
-			axs[0].annotate(s = an[1], xy = (an[0], -4.), fontsize = 20, rotation = 90)
+		# # plot annotations
+		# for an in annotations:
+		# 	axs[0].annotate(s = an[1], xy = (an[0], -4.), fontsize = 20, rotation = 90)
 
 		"""
 			ACTIWAVE ACCELERATION DATA
@@ -546,12 +565,12 @@ def plot_non_wear_data(actigraph_acc, actiwave_acc, actiwave_hr, plot_folder, su
 		"""
 			ACTIWAVE NON WEAR TIME
 		"""
-		# extract only non-wear time from dataframe column
-		non_wear_time = actiwave_acc['NON-WEAR'].loc[actiwave_acc['NON-WEAR'] == 0]
-		# make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
-		non_wear_time = non_wear_time.iloc[::1000]
-		# plot non wear as scatter
-		axs[1].scatter( y = np.repeat(-4.9,len(non_wear_time)),  x = non_wear_time.index, c = 'red', s = 60)
+		# # extract only non-wear time from dataframe column
+		# non_wear_time = actiwave_acc['NON-WEAR'].loc[actiwave_acc['NON-WEAR'] == 0]
+		# # make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
+		# non_wear_time = non_wear_time.iloc[::1000]
+		# # plot non wear as scatter
+		# axs[1].scatter( y = np.repeat(-4.9,len(non_wear_time)),  x = non_wear_time.index, c = 'red', s = 60)
 
 		"""
 			VMU
@@ -1054,7 +1073,7 @@ def plot_nw_scenarios(all_data, plot_folder = os.path.join('plots', 'paper'), pl
 
 
 """
-	FINAL PAPER PLOTS
+	PAPER 1 PLOTS
 """
 def plot_nw_distribution(data, plot_name = 'distribution-of-nw-times.pdf', plot_folder = os.path.join('plots', 'paper')):
 	"""
@@ -1105,7 +1124,7 @@ def plot_nw_distribution(data, plot_name = 'distribution-of-nw-times.pdf', plot_
 	plt.close()
 
 
-def plot_classification_results(data, data_filtered, plot_name = 'classification_performance.pdf', plot_folder = os.path.join('plots', 'paper')):
+def plot_classification_results(data, data_ci, data_filtered, data_filtered_ci, plot_name = 'classification_performance_with_ci.pdf', plot_folder = os.path.join('plots', 'paper')):
 	"""
 	Plot classification performance of the four non wear algoritms with their default parameters for two datasets
 		1 = all the dat
@@ -1139,14 +1158,14 @@ def plot_classification_results(data, data_filtered, plot_name = 'classification
 	for i, metric in enumerate(plot_metrics):
 
 		# plot performance of all data
-		bars = axs[i].bar(x, data[metric], width = width, label = 'all data', align = 'center', alpha = .8, color = '#d8b365' )
+		bars = axs[i].bar(x, data[metric], yerr = data_ci[metric], width = width, label = 'all data', align = 'center', alpha = .8, color = '#d8b365' )
 		# plot performance of data without nights
-		bars += axs[i].bar(x + width, data_filtered[metric], width = width, label = '07:00 - 23:00', align = 'center', alpha = .8, color = '#5ab4ac')
+		bars += axs[i].bar(x + width, data_filtered[metric], yerr = data_filtered_ci[metric], width = width, label = '07:00 - 23:00', align = 'center', alpha = .8, color = '#5ab4ac')
 
 		# plot bar height on top of bar
 		for rect in bars:
 			height = rect.get_height()
-			axs[i].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 3), ha='center', va='bottom', fontsize=9)
+			axs[i].text(rect.get_x() + rect.get_width() / 2.0, height + 0.04, round(height, 3), ha='center', va='bottom', fontsize=9)
 	
 		# adjust the plot
 		axs[i].set_xticks(x + width/2)
@@ -1231,7 +1250,7 @@ def plot_classification_results_comparison(df, plot_name ='classification_perfor
 	plt.close()
 
 
-def plot_classification_results_comparison_all(df, plot_name ='classification_performance_comparison_all.pdf', plot_folder = os.path.join('plots', 'paper')):
+def plot_classification_results_comparison_all(df, plot_name ='classification_performance_comparison_all_with_ci.pdf', plot_folder = os.path.join('plots', 'paper')):
 	"""
 	Plot bar charts that show the classification performance in comparison to other metrics, this shows how optimizing for precision affects the accuracy, recall, and f1.
 
@@ -1274,22 +1293,34 @@ def plot_classification_results_comparison_all(df, plot_name ='classification_pe
 			# unpack classification values
 			optimized_values = [results[1][1]['accuracy'], results[1][1]['precision'], results[1][1]['recall'], results[1][1]['f1']]
 
+			# calculate 95% confidene interval for default values
+			ci_default = []
+			for value in default_values:
+				ci =  1.96 * sqrt( (value * (1 - value)) / 583)
+				ci_default.append(ci)
+
+			# calculate 95% confidence interval for optimized values
+			ci_optimized = []
+			for value in optimized_values:
+				ci =  1.96 * sqrt( (value * (1 - value)) / 583)
+				ci_optimized.append(ci)
+				
 			# plot default performance values
-			bars = axs[ax_idx].bar(x, default_values, width = width, align = 'center', alpha = .8, color = '#d8b365' )
+			bars = axs[ax_idx].bar(x, default_values, yerr = ci_default, width = width, align = 'center', alpha = .8, color = '#d8b365' )
 			# plot optimized performance values
-			bars += axs[ax_idx].bar(np.array(x) + width, optimized_values, width = width, align = 'center', alpha = .8, color = '#5ab4ac')
+			bars += axs[ax_idx].bar(np.array(x) + width, optimized_values, yerr = ci_optimized, width = width, align = 'center', alpha = .8, color = '#5ab4ac')
 
 			# plot bar height on top of bar
 			for rect in bars:
 				height = rect.get_height()
-				axs[ax_idx].text(rect.get_x() + rect.get_width() / 2.0, height, round(height, 3), ha='center', va='bottom')
+				axs[ax_idx].text(rect.get_x() + rect.get_width() / 2.0, height + 0.04, round(height, 3), ha='center', va='bottom')
 		
 			# adjust the plot
 			axs[ax_idx].set_xticks(np.arange(len(data)) + width/2)
 			axs[ax_idx].set_xticklabels(['accuracy', 'precision', 'recall', 'f1'])
 			axs[ax_idx].grid(True, 'major', ls = '--')
 			axs[cnt * 4].set_ylabel('score')
-			axs[ax_idx].set_ylim(0,1.1)
+			axs[ax_idx].set_ylim(0,1.19)
 			axs[cnt].legend(['default', 'optimized'], loc='best', prop={'size': 10})
 			axs[ax_idx].set_title('{} - Optimized for {}'.format(column, metric))
 			axs[ax_idx].tick_params(axis='both', left = True, bottom = True, which='both')
@@ -1389,5 +1420,417 @@ def plot_grid_search(data, nw_method, classification, labels, annotations, plot_
 	save_location = os.path.join(plot_folder, plot_name)
 	# save the figure
 	fig.savefig(save_location)
+	# close the figure environemtn
+	plt.close()
+
+
+
+"""
+	PAPER 2 PLOTS
+"""
+
+
+def plot_merged_episodes(actigraph_acc, actiwave_acc, episodes, grouped_episodes, subject, plot_folder = os.path.join('plots', 'merged-episodes')):
+	"""
+	Plot activity data from actigraph and actiwave including two types of episodes:
+	  - normal episodes
+	  - episodes that have been grouped
+
+	This is mainly to see if the grouping went ok
+	"""
+
+	# setting up the plot environment
+	fig, axs = plt.subplots(2, 1, figsize=(50, 20), sharey = True)
+	axs = axs.ravel()
+	
+	# plot actigraph
+	axs[0].plot(actigraph_acc)
+	# plot actiwave
+	axs[1].plot(actiwave_acc)
+	
+	for i, ep in enumerate([episodes, grouped_episodes]):
+		# plot episodes
+		for _, row in ep.iterrows():
+
+			# color
+			c = 'red' if row['label'] == 1 else 'green'
+			# counter
+			counter = row['counter']
+			# start and stop  index
+			start = row['start_index']
+			stop = row['stop_index']
+
+			plot_y_index = -4 if i == 0 else -5
+			annotation_y_index = -4.5 if i == 0 else -5.5
+
+			# get range of x values
+			nw_time_range = actigraph_acc.iloc[start:stop].index[::1000]
+			# plot scatter
+			axs[0].scatter( y = np.repeat(plot_y_index, len(nw_time_range)),  x = nw_time_range, c = c, s = 50)
+			# plot annotation
+			axs[0].annotate(s = counter, xy = (actigraph_acc.index[start], annotation_y_index), fontsize = 16)
+
+
+
+	# """
+	# 	STYLING THE PLOT
+	# """
+	for ax in axs:
+		# define format of dates
+		xfmt = md.DateFormatter('%H:%M')
+		# define hours
+		hours = md.HourLocator(interval = 1)
+		# change the x-axis to show hours:
+		ax.xaxis.set_major_locator(hours)
+		# change the x-axis format
+		ax.xaxis.set_major_formatter(xfmt)
+		# change font size x acis
+		ax.xaxis.set_tick_params(labelsize=20)
+		# change font size y acis
+		ax.yaxis.set_tick_params(labelsize=20)
+		# set the legend
+		ax.legend(loc="upper right", prop={'size': 20})
+		# make sure the x-axis has no white space
+		ax.margins(x = 0)
+
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, '{}.png'.format(subject))
+	# save the figure
+	fig.savefig(save_location, dpi=150)
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_cnn_classification_performance(plot_data, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode')):
+
+	fig, axs = plt.subplots(2,2, figsize = (12,16))
+	axs = axs.ravel()
+
+	plot_counter = 0
+	for cnn_type, data in plot_data.items():
+
+		
+		ax = sns.heatmap(data,
+						ax = axs[plot_counter],
+						cmap="Blues",
+						annot = True, 
+						vmin=0.9, 
+						vmax=1.0, 
+						square=True,
+						annot_kws={"size": 11},
+						fmt='.3g',
+						cbar = False,
+						#cbar_kws={"orientation": "vertical",'label': 'modularity',"shrink": .8}
+						)
+
+		ax.xaxis.tick_top()
+		ax.xaxis.set_label_position('top') 
+		# plt.yticks(rotation=0)
+		# plt.xticks(rotation=0, ha='left')
+		ax.set_xlabel('window size (sec)')
+
+		ax.set_title(f'CNN architecture {cnn_type}', fontsize=16, y=1.08)
+		# fig = ax.get_figure()
+		# fig.set_size_inches(20, 10)
+		# fig.savefig("plots/country-modularity-scores-{}-{}.pdf".format(min_year, max_year), bbox_inches='tight')
+		# plt.close()
+		plot_counter += 1
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+
+	# save the figure
+	fig.savefig(os.path.join(plot_folder, f'cnn_classification_performance.pdf'))
+	# close the figure environemtn
+	plt.close()
+
+def plot_training_results_per_epoch(data, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode')):
+
+
+	fig, axs = plt.subplots(2,3, figsize = (15,10))
+	axs = axs.ravel()
+
+	x = range(1,51)
+
+	# plot the following
+	plot_cols = ['loss', 'accuracy', 'precision', 'recall', 'F1', 'auc']
+
+	for i, col in enumerate(plot_cols):
+
+		# plot loss
+		axs[i].plot(x, data[f'{col}'], label = f'training {col}', zorder = 10)
+		axs[i].plot(x, data[f'val_{col}'], label = f'validation {col}')
+
+		if col != 'loss':
+			axs[i].set_ylim(0.8,1.0)
+
+
+	# customize plot
+	for ax in axs:
+
+		ax.legend(loc='best', prop={'size': 10})
+		ax.set_xlim(0,50)
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+
+	# save the figure
+	fig.savefig(os.path.join(plot_folder, f'cnn_training_results_per_epoch.pdf'))
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_cnn_inferred_nw_time(subject, data, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode', 'inferred_nw_time')):
+
+	
+	# setting up the plot environment
+	fig, axs = plt.subplots(1, 1, figsize=(30, 5))
+	
+
+	"""
+		ACTIGRAPH ACCELERATION DATA
+	"""
+
+	# plot acceleration Y
+	axs.plot(data['Y'], label = 'Y')
+	# plot acceleration X
+	axs.plot(data['X'], label = 'X')
+	# plot acceleration Z
+	axs.plot(data['Z'], label = 'Z')
+	
+	# set the y axis limit
+	axs.set_ylim((-5,5))
+
+	"""
+		ACTIGRAPH NON WEAR TIME
+	"""
+
+	# extract only non-wear time from dataframe column
+	true_nw_time = data['TRUE NW-TIME'].loc[data['TRUE NW-TIME'] == 1]
+	# make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
+	true_nw_time = true_nw_time.iloc[::2000]
+	# plot non wear as scatter
+	axs.scatter( y = np.repeat(-4.9,len(true_nw_time)),  x = true_nw_time.index, c = 'red', s = 60)
+
+	# extract only non-wear time from dataframe column
+	inferred_nw_time = data['INFERRED NW-TIME'].loc[data['INFERRED NW-TIME'] == 1]
+	# make smaller by taking only each minute of data (we don't need 100 values per second here for plotting)
+	inferred_nw_time = inferred_nw_time.iloc[::2000]
+	# plot non wear as scatter
+	axs.scatter( y = np.repeat(-4.5,len(inferred_nw_time)),  x = inferred_nw_time.index, c = 'green', s = 60)
+
+	"""
+		STYLING THE PLOT
+	"""
+
+	# define format of dates
+	xfmt = md.DateFormatter('%H:%M')
+	# define hours
+	hours = md.HourLocator(interval = 1)
+	# change the x-axis to show hours:
+	axs.xaxis.set_major_locator(hours)
+	# change the x-axis format
+	axs.xaxis.set_major_formatter(xfmt)
+	# change font size x acis
+	axs.xaxis.set_tick_params(labelsize=20)
+	# change font size y acis
+	axs.yaxis.set_tick_params(labelsize=20)
+	# set the legend
+	axs.legend(loc="upper right", prop={'size': 20})
+	# make sure the x-axis has no white space
+	axs.margins(x = 0)
+
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+	# create the save location
+	save_location = os.path.join(plot_folder, '{}.png'.format(subject))
+	# save the figure
+	fig.savefig(save_location, dpi=150)
+	# close the figure environemtn
+	plt.close()
+
+def plot_episodes_used_for_training_combined(plot_data, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode')):
+
+	# define number of rows
+	num_rows = 4
+	# define number of columnbs
+	num_columns = 10
+
+	fig, axs = plt.subplots(num_rows, num_columns, figsize = (18,10), sharex=True, sharey=True)
+
+	plot_cnt = 0
+	for i in range(0,num_rows // 2):
+		for j in range(num_columns):
+			axs[i][j].plot(plot_data['0'][plot_cnt][1])
+
+			axs[0][0].set_title('(a) non-wear time', fontsize = 14, x=-0.009)
+			if j == 0:
+				axs[i][j].set_ylabel('acceleration (g)')
+
+			if i == (num_rows // 2) - 1:
+				axs[i][j].set_xlabel('time (ms)')
+				# plt.setp(axs[i][j].get_xticklabels(), visible=True)
+				axs[i][j].tick_params(labelbottom = True)
+			plot_cnt +=1
+	
+	plot_cnt = 0
+	for i in range(num_rows // 2, num_rows):
+		for j in range(num_columns):
+			axs[i][j].plot(plot_data['1'][plot_cnt][1])
+
+			axs[2][0].set_title('(b) wear time', fontsize = 14, x=-0.06)
+			if i == num_rows -1:
+				axs[i][j].set_xlabel('time (ms)')
+			if j == 0:
+				axs[i][j].set_ylabel('acceleration (g)')
+			plot_cnt +=1
+
+	for ax in axs.ravel():
+		ax.set_ylim((-3,3))
+		ax.grid(False)
+		ax.tick_params(axis='both', left = True, bottom = True, which='both')
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+
+	# save the figure
+	fig.savefig(os.path.join(plot_folder, f'episodes_used_for_training.pdf'))
+	# close the figure environemtn
+	plt.close()
+
+
+def plot_episodes_used_for_training(plot_data, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode')):
+
+	for label, data in plot_data.items():
+
+		# define number of rows
+		num_rows = 10
+		# define number of columnbs
+		num_columns = 10
+
+		fig, axs = plt.subplots(num_rows, num_columns, figsize = (20,20))
+		axs = axs.ravel()
+
+		# shorten data
+		# data = data[:num_rows*num_columns]
+
+		for i, array in enumerate(data):
+			
+			if i > num_rows * num_columns -1:
+				break
+			axs[i].plot(array[1])
+			# axs[i].set_title(array[0])
+			axs[i].set_ylim((-3,3))
+
+
+		# crop white space
+		fig.set_tight_layout(True)
+		# create the plot folder if not exist already
+		create_directory(plot_folder)
+
+		# save the figure
+		fig.savefig(os.path.join(plot_folder, f'episodes_used_for_training_{label}.png'), dpi=150)
+		# close the figure environemtn
+		plt.close()
+
+def plot_baseline_performance(plot_data, plot_name, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode')):
+	"""
+	Plot heatmaps of classification performance from 
+	"""
+
+	fig, axs = plt.subplots(2,2, figsize = (12,9))
+	axs = axs.ravel()
+
+	plot_counter = 0
+	for classification, data in plot_data.items():
+
+	
+		ax = sns.heatmap(data.fillna(0),
+						ax = axs[plot_counter],
+						cmap="Blues",
+						annot = True, 
+						vmin=np.mean(data.mean()), 
+						vmax=max(data.max()), 
+						square=True,
+						annot_kws={"size": 12},
+						fmt='.3g',
+						cbar = False,
+						cbar_kws={"orientation": "vertical",'label': 'modularity'}
+						)
+
+		ax.xaxis.tick_top()
+		ax.xaxis.set_label_position('top') 
+		# plt.yticks(rotation=0)
+		# plt.xticks(rotation=0, ha='left')
+		ax.set_xlabel('minimum interval length (min)')
+		ax.set_ylabel('standard deviation threshold (mg)')
+
+		ax.set_title(classification, fontsize=16, y=1.08)
+		# fig = ax.get_figure()
+		# fig.set_size_inches(20, 10)
+		# fig.savefig("plots/country-modularity-scores-{}-{}.pdf".format(min_year, max_year), bbox_inches='tight')
+		# plt.close()
+		plot_counter += 1
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+
+	# save the figure
+	fig.savefig(os.path.join(plot_folder, f'baseline_performance_{plot_name}.pdf'))
+	# close the figure environemtn
+	plt.close()
+
+def plot_performance_cnn_nw_method(data, plot_folder = os.path.join('plots', 'non-wear-time', 'label_episode')):
+
+	fig, ax = plt.subplots(1,1, figsize = (10,6))
+	
+
+	ax = sns.heatmap(data,
+					cmap="Blues",
+					annot = True, 
+					vmin=0.95, 
+					vmax=1, 
+					square=True,
+					annot_kws={"size": 12},
+					fmt='.3g',
+					cbar = False,
+					cbar_kws={"orientation": "vertical",'label': 'modularity'})
+
+	ax.xaxis.tick_top()
+	ax.xaxis.set_label_position('top') 
+	plt.yticks(rotation=0)
+	plt.xticks(rotation=90, ha='left')
+	# ax.set_xlabel('minimum interval length (min)')
+	# ax.set_ylabel('standard deviation threshold (mg)')
+
+	# ax.set_title(classification, fontsize=16, y=1.08)
+	# fig = ax.get_figure()
+	# fig.set_size_inches(20, 10)
+	# fig.savefig("plots/country-modularity-scores-{}-{}.pdf".format(min_year, max_year), bbox_inches='tight')
+	# plt.close()
+
+	# crop white space
+	fig.set_tight_layout(True)
+	# create the plot folder if not exist already
+	create_directory(plot_folder)
+
+	# save the figure
+	fig.savefig(os.path.join(plot_folder, f'cnn_nw_performance.pdf'))
 	# close the figure environemtn
 	plt.close()

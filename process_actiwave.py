@@ -14,6 +14,7 @@ from joblib import delayed
 from scipy import stats
 from scipy.stats import kurtosis
 from scipy.stats import norm
+from math import sqrt
 
 """
 	IMPORTED FUNCTIONS
@@ -23,7 +24,7 @@ from functions.helper_functions import 	set_start, set_end, dictionary_values_by
 										read_csv, convert_short_code_to_long
 from functions.hdf5_functions import get_all_subjects_hdf5, read_metadata_from_group, read_dataset_from_group, read_metadata_from_group_dataset, save_multi_data_to_group_hdf5, save_meta_data_to_group_dataset, save_data_to_group_hdf5
 from functions.actiwave_functions import create_actiwave_time_vector
-from functions.plot_functions import plot_classification_results, plot_time_distribution, plot_nw_scenarios, plot_nw_distribution
+from functions.plot_functions import plot_classification_results, plot_time_distribution, plot_nw_scenarios, plot_nw_distribution, plot_non_wear_data
 from functions.gt3x_functions import rescale_log_data, create_time_array
 from functions.raw_non_wear_functions import find_candidate_non_wear_segments_from_raw, find_consecutive_index_ranges
 from functions.autocalibrate_functions_2 import get_calibration_weights, return_default_weights, find_segments_moving_averages
@@ -814,7 +815,7 @@ def create_dl_features_from_labels(f, save_location, i = 1, total = 1, autocalib
 	np.save(os.path.join(save_location, '{}_Y.npy'.format(subject)), Y)
 
 
-def create_ml_classifier(feature_location = os.path.join('labels', 'actigraph-actiwave-mapping', 'non-wear-time-features'), model_save_location = os.path.join('files', 'ml-models')):
+def create_ml_classifier(feature_location = os.path.join('labels', 'actigraph-actiwave-mapping', 'non-wear-time-features'), model_save_location = os.path.join('files', 'ml-models-nowac1', 'ml-32-nofilter-minus-round')):
 	"""
 	Create machine learning classifier that is able to classify candidate segments of non wear time into real non wear time or wear time
 		- real non wear time there is a discrapancy between the actigraph signal and actiwave signal
@@ -854,6 +855,45 @@ def create_ml_classifier(feature_location = os.path.join('labels', 'actigraph-ac
 		# create and save the model
 		execute_gridsearch_cv(X, Y, test_size = .2, shuffle = True, pipeline_setup = pipeline_setup, grid_setup = grid_setup, cv = 10, n_jobs = cpu_count(), scoring = 'f1_weighted', verbose = 10, save_model = True, model_save_location = target_model_save_location)
 
+def calculate_ci_ml_classifier(models_folder = os.path.join('files', 'ml-models-nowac1', 'ml-32-nofilter-minus-round')):
+
+	# read folder and only take models
+	F = [ f for f in read_directory(models_folder) if f[-4:] == '.csv']
+
+	# total number of test samples
+	test_samples = 912
+
+	# store all results
+	all_results = pd.DataFrame()
+
+	# loop over each file
+	for f in F:
+
+		logging.info(f'Processing file: {f}')
+
+		# extract classification type from file name
+		classification_type = f.split(os.sep)[-1][:-4]
+
+		# add empty dictionary to dictionary
+		results = {}
+
+		# read csv as dataframe
+		data = pd.read_csv(f, index_col = 0)
+
+		# metrics
+		metrics = ['test_precision', 'test_recall', 'test_f1']
+
+		for m in metrics:
+
+			metric_value = float(data.loc[m][0])
+
+			results[m] = 1.96 * sqrt( (metric_value * (1 - metric_value)) / test_samples)
+			
+		all_results[classification_type] = pd.Series(results)
+	
+	# save to file
+	all_results.to_csv(os.path.join(models_folder, '95_CI.csv'))
+	
 
 def create_dl_classifier(feature_location = os.path.join('labels', 'actigraph-actiwave-mapping', 'non-wear-time-features', 'dl-1-nofilter'), model_save_location = os.path.join('files', 'dl-models')):
 	"""
@@ -982,6 +1022,10 @@ def batch_process_detect_true_non_wear_time(limit = None, skip_n = 0, use_parall
 	# exclude subjects that have issues with their data
 	subjects = [s for s in subjects if s not in get_subjects_with_invalid_data()]
 
+	# # TESTING
+	# subjects = ['90015722']
+	# subjects = ['90021214']
+
 	# load machine learning classifier
 	classifier = load_pickle(ml_classifier)
 
@@ -1009,7 +1053,7 @@ def batch_process_detect_true_non_wear_time(limit = None, skip_n = 0, use_parall
 			process_detect_true_non_wear_time(subject = subject, classifier = classifier, idx = i, total = len(subjects))
 
 
-def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, perform_autocalibration = False, perform_correction = True):
+def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, perform_autocalibration = False, perform_correction = True, save_annotations_folder = os.path.join('labels', 'start_stop_all')):
 	"""
 	Detect non-wear time in actigraph acceleration data by including actiwave acceleration data
 	basically when actigraph shows no activity, but actiwave records activity, there is a mismatch between the two signals
@@ -1135,6 +1179,9 @@ def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, p
 	# new non wear vector that contains the true non-wear time after scoring 
 	non_wear_final_vector = np.ones((actigraph_time.shape[0], 1))
 
+	# empty list for start and stop data
+	annotations = pd.DataFrame()
+
 	# only find scores when there are segments found
 	if len(dic_segments) > 0:
 
@@ -1188,10 +1235,19 @@ def process_detect_true_non_wear_time(subject, classifier, idx = 1, total = 1, p
 			if label == 0:
 				non_wear_final_vector[v['start_index']:v['stop_index']] = 0
 
+			annotations[counter] = pd.Series({'counter' : counter, 'start' : v['start'], 'stop' : v['stop'], 'start_index': v['start_index'], 'stop_index' : v['stop_index'], 'label' : label})
 			counter += 1
 
+	# create folder to save annotations to
+	create_directory(save_annotations_folder)
+
+	# save annotations
+	annotations.T.to_csv(os.path.join(save_annotations_folder, f'{subject}.csv'))
+
+	# plot_non_wear_data(actigraph_acc = df_actigraph_acc, actiwave_acc = df_actiwave_acc, actiwave_hr = df_actiwave_hr, plot_folder = os.path.join('plots','actiwave-nw-with-counter'), subject = subject, annotations = annotations.T)
+
 	# save to HDF5 if set to True
-	save_data_to_group_hdf5(group = subject, data = non_wear_final_vector, data_name = 'actigraph_true_non_wear', overwrite = True, create_group_if_not_exists = False, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
+	# save_data_to_group_hdf5(group = subject, data = non_wear_final_vector, data_name = 'actigraph_true_non_wear', overwrite = True, create_group_if_not_exists = False, hdf5_file = ACTIWAVE_ACTIGRAPH_MAPPING_HDF5_FILE)
 		
 
 def batch_process_calculate_classification_performance(function, limit = None, skip_n = 0, use_parallel = False, num_jobs = cpu_count()):
@@ -1476,8 +1532,49 @@ def process_plot_classification_results(data_folder = os.path.join('files', 'cla
 	data = pd.read_csv(os.path.join(data_folder, 'classification-results-{}.csv'.format(F[0])), index_col = 0)
 	data_filtered = pd.read_csv(os.path.join(data_folder, 'classification-results-{}.csv'.format(F[1])), index_col = 0)
 
+	"""
+		Calculate 95% Confidence interval
+	"""
+	data_ci = pd.DataFrame()
+
+	for index, rows in data.iteritems():
+
+		if index in ['accuracy', 'precision', 'recall', 'f1']:
+
+			row_data = {}
+
+			for row_index, row in rows.iteritems():
+
+				row = float(row)
+
+				# update dataframe
+				row_data[row_index] = 1.96 * sqrt( (row * (1 - row)) / 583)
+
+			data_ci[index] = pd.Series(row_data)
+
+	"""
+		Calculate 95% Confidence interval
+	"""
+	data_filtered_ci = pd.DataFrame()
+
+	for index, rows in data_filtered.iteritems():
+
+		if index in ['accuracy', 'precision', 'recall', 'f1']:
+
+			row_data = {}
+
+			for row_index, row in rows.iteritems():
+
+				row = float(row)
+
+				# update dataframe
+				row_data[row_index] = 1.96 * sqrt( (row * (1 - row)) / 583)
+
+			data_filtered_ci[index] = pd.Series(row_data)
+
+
 	# call plot function
-	plot_classification_results(data, data_filtered)
+	plot_classification_results(data, data_ci, data_filtered, data_filtered_ci)
 
 
 def process_plot_time_distribution(load_from_file = True):
@@ -1595,7 +1692,6 @@ def process_plot_nw_scenarios(read_from_file = True):
 		data = load_pickle('nw_scenarios', os.path.join('files', 'paper'))
 
 	plot_nw_scenarios(data)
-
 
 def process_table_cv_classification(grid_search_folder = os.path.join('files', 'grid-search', 'final_reverse_prec_rec_new_hecht'), cv_grid_search_folder = os.path.join('files', 'grid-search-cv', 'split3-false_reverse_new_hecht')):
 
@@ -1787,11 +1883,44 @@ def process_table_cv_classification(grid_search_folder = os.path.join('files', '
 	sorted_columns = [x[2:] for x in sorted(sorted_columns)]
 	df_parameters = df_parameters.reindex(sorted_columns, axis=1)
 
+	"""
+		Calculate 95% Confidence interval
+	"""
+	df_classification_with_ci = pd.DataFrame()
+
+	for index, rows in df_classification.iteritems():
+
+		total = 583
+
+		if 'all' in index:
+			n = total
+		elif 'test' in index:
+			n = int(.3 * total)
+		elif 'training' in index:
+			n = int(.7 * total)
+		else:
+			logging.error('cannot calculate number of samples')
+			exit(1)
+
+		data = {}
+
+		for row_index, row in rows.iteritems():
+
+			row = float(row)
+
+			ci = 1.96 * sqrt( (row * (1 - row)) / n)
+
+			# update dataframe
+			data[row_index] = '{:.3f} $\pm$ {:.3f}'.format(round(row,3), round(ci,3))
+
+		df_classification_with_ci[index] = pd.Series(data)
 
 
 	# save to disk
-	df_classification.to_csv(os.path.join('plots', 'paper', 'tables', 'cv_classification_results.csv'))
-	df_parameters.to_csv(os.path.join('plots', 'paper', 'tables', 'parameter_values.csv'))
+	# df_classification.to_csv(os.path.join('plots', 'paper1', 'tables', 'cv_classification_results.csv'))
+	df_classification_with_ci.to_csv(os.path.join('plots', 'paper1', 'tables', 'cv_classification_results_with_ci.csv'))
+	# df_parameters.to_csv(os.path.join('plots', 'paper1', 'tables', 'parameter_values.csv'))
+
 
 def process_nw_time_overview(read_from_file = True):
 	"""
@@ -2084,6 +2213,21 @@ def get_grid_setup():
             {"hyperparameter": "algorithm"},
             {"hyperparameter": "adaboost_learning_rate", "min": 1, "max": 2},
         ],
+		"MLPClassifier" : [
+			{"hyperparameter" : "hidden_layer_sizes",
+			"neurons" : [(10,10,10,10),
+						(20,20,20,20),
+						(30,30,30,30),
+						(40,40,40,40),
+						(50,50,50,50),
+						(60,60,60,60),
+						(70,70,70,70),
+						(80,80,80,80),
+						(90,90,90,90),
+						(100,100,100,100)],
+			}
+
+		],
     }
 
 
@@ -2135,6 +2279,15 @@ def get_pipeline_setup():
             }
         ],
         "AdaBoostClassifier": [
+            {
+                "scaler": True,
+                "scaler_order": -1,
+                "poly_features": True,
+                "poly_features_order": -2,
+                "poly_features_degree": 2,
+            }
+        ],
+		"MLPClassifier": [
             {
                 "scaler": True,
                 "scaler_order": -1,
@@ -2262,6 +2415,9 @@ if __name__ == "__main__":
 	# 4a) create the machine learning classifier
 	# create_ml_classifier()
 
+	# 4b) calculate confidence intervals for classifiers
+	# calculate_ci_ml_classifier()
+
 	# 4b) create deep learning classifier
 	# create_dl_classifier()
 
@@ -2269,7 +2425,7 @@ if __name__ == "__main__":
 	# explore_misclassification_of_training_data()
 
 	# 5) batch process finding non-wear time in actigraph data with the help of actiwave data
-	# batch_process_detect_true_non_wear_time(use_parallel = False)
+	# batch_process_detect_true_non_wear_time(use_parallel = True)
 
 	# 6a) calculate precision, recall of non wear methods to true non wear time
 	# batch_process_calculate_classification_performance(function = process_calculate_classification_performance, use_parallel = False, limit = 10)
@@ -2285,7 +2441,7 @@ if __name__ == "__main__":
 	"""
 
 	# plot classification results from all participants for four non wear algorithms
-	# process_plot_classification_results()
+	process_plot_classification_results()
 	
 	# plot time distribution of data
 	# process_plot_time_distribution()
@@ -2297,7 +2453,7 @@ if __name__ == "__main__":
 	# process_table_cv_classification()
 
 	# get overview of distribution of non-wear times
-	process_nw_time_overview()
+	# process_nw_time_overview()
 
 	# get dataset characteristics (gender, height, weight, bmi, etc)
 	# process_dataset_characteristics()

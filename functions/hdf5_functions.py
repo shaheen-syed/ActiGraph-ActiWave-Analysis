@@ -329,7 +329,7 @@ def read_dataset_from_group(group_name, dataset, hdf5_file = None, start_slice =
 		exit()
 
 
-def save_data_to_group_hdf5(group, data, data_name, meta_data = None, overwrite = False, create_group_if_not_exists = True, hdf5_file = None):
+def save_data_to_group_hdf5(group, data, data_name, meta_data = None, overwrite = False, create_group_if_not_exists = True, hdf5_file = None, max_sec_sleep = 5):
 	"""
 	Save data as a dataset in a group
 
@@ -349,6 +349,8 @@ def save_data_to_group_hdf5(group, data, data_name, meta_data = None, overwrite 
 		create group in hdf5 file if not exists
 	hdf5_file : string (optional)
 		location of the hdf5 file. If not given, then we read it from the function get_hdf5_file
+	max_sec_sleep : int
+		maximum time to sleep untill next write action is tried (happens when function is called from multiple threads)
 	"""
 
 	# if the hdf5 file is not given, then we read it from the function get_hdf5_file 
@@ -413,7 +415,7 @@ def save_data_to_group_hdf5(group, data, data_name, meta_data = None, overwrite 
 	except IOError:
 
 		# random sleep between seconds
-		sleep = get_random_number_between(1, 5)
+		sleep = get_random_number_between(1, max_sec_sleep)
 		logging.warning('HDF5 file currently open, sleeping {} seconds'.format(sleep))
 		time.sleep(sleep)
 

@@ -16,7 +16,7 @@ from functions.epoch_functions import create_epoch_time_array, convert_epoch_dat
 from functions.autocalibrate_functions_2 import calibrate_accelerometer_data, parse_calibration_weights
 
 
-def get_actigraph_acc_data(subject, hdf5_file, autocalibrate = False):
+def get_actigraph_acc_data(subject, hdf5_file, autocalibrate = False, acc_dataset = 'actigraph_acc', time_dataset = 'actigraph_time'):
 	"""
 	Read actigraph acceleration data from HDF5 file, if autocalibrate is set to True, then perform autocalibration. Also create the correct
 	time array
@@ -43,9 +43,9 @@ def get_actigraph_acc_data(subject, hdf5_file, autocalibrate = False):
 	try:
 
 		# read actigraph acceleration data
-		actigraph_acc = read_dataset_from_group(group_name = subject, dataset = 'actigraph_acc', hdf5_file = hdf5_file)
+		actigraph_acc = read_dataset_from_group(group_name = subject, dataset = acc_dataset, hdf5_file = hdf5_file)
 		# read actigraph meta-data
-		actigraph_meta_data = read_metadata_from_group_dataset(group_name = subject, dataset = 'actigraph_acc', hdf5_file = hdf5_file)
+		actigraph_meta_data = read_metadata_from_group_dataset(group_name = subject, dataset = acc_dataset, hdf5_file = hdf5_file)
 		# convert the values of the dictionary from bytes to string
 		actigraph_meta_data = dictionary_values_bytes_to_string(actigraph_meta_data)
 		
@@ -55,7 +55,7 @@ def get_actigraph_acc_data(subject, hdf5_file, autocalibrate = False):
 			# autocalibrate actigraph acceleration data 
 			actigraph_acc = calibrate_accelerometer_data(actigraph_acc, actigraph_weights)
 		# read actigraph acceleration time
-		actigraph_time = np.asarray(read_dataset_from_group(group_name = subject, dataset = 'actigraph_time', hdf5_file = hdf5_file), dtype = 'datetime64[ms]')
+		actigraph_time = np.asarray(read_dataset_from_group(group_name = subject, dataset = time_dataset, hdf5_file = hdf5_file), dtype = 'datetime64[ms]')
 
 		return actigraph_acc, actigraph_meta_data, actigraph_time
 

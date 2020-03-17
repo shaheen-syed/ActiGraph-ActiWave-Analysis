@@ -3,9 +3,12 @@
 	IMPORT PACKAGES
 """
 import numpy as np
+import pandas as pd
+
+from functions.helper_functions import calculate_vector_magnitude
 
 
-def find_candidate_non_wear_segments_from_raw(acc_data, std_threshold, hz, min_segment_length = 1, sliding_window = 1):
+def find_candidate_non_wear_segments_from_raw(acc_data, std_threshold, hz, min_segment_length = 1, sliding_window = 1, use_vmu = False):
 	"""
 	Find segements within the raw acceleration data that can potentially be non-wear time (finding the candidates)
 
@@ -39,7 +42,12 @@ def find_candidate_non_wear_segments_from_raw(acc_data, std_threshold, hz, min_s
 
 		# slice the data
 		data = acc_data[i:i + sliding_window]
-				
+
+		# calculate VMU if set to true
+		if use_vmu:
+			# calculate the VMU of XYZ
+			data = calculate_vector_magnitude(data)
+	
 		# calculate the standard deviation of each column (YXZ)
 		std = np.std(data, axis=0)
 
@@ -178,3 +186,108 @@ def backward_search_non_wear_time(data, start_slice, end_slice, std_max, hz, tim
 		else:
 			# here we have found that the additional time we added is not non-wear time anymore, stop and break from the loop by returning the updated slice
 			return start_slice
+
+def group_episodes(episodes, distance_in_min = 3, correction = 3, hz = 100, training = False):
+	"""
+	Group episodes that are very close together
+
+	Parameters
+	-----------
+	episodes : pd.DataFrame()
+		dataframe with episodes that need to be grouped
+	distance_in_min = int
+		maximum distance two episodes can be apart and need to be grouped together
+	correction = int
+		due to changing from 100hz to 32hz we need to allow for a small correction to capture full minutes
+	hz = int
+		sample frequency of the data (necessary when working with indexes)
+
+	Returns
+	--------
+	grouped_episodes : pd.DataFrame()
+		dataframe with grouped episodes
+	"""
+
+	# check if there is only 1 episode in the episodes dataframe, if so, we need not to do anything since we cannot merge episodes if we only have 1
+	if episodes.empty or len(episodes) == 1:
+		# transpose back and return
+		return episodes.T
+
+	# create a new dataframe that will contain the grouped rows
+	grouped_episodes = pd.DataFrame()
+
+	# get all current values from the first row
+	current_start = episodes.iloc[0]['start']
+	current_start_index = episodes.iloc[0]['start_index']
+	current_stop = episodes.iloc[0]['stop']
+	current_stop_index = episodes.iloc[0]['stop_index']
+	current_label = None if not training else episodes.iloc[0]['label']
+	current_counter = episodes.iloc[0]['counter']
+
+
+	# loop over each next row (note that we skip the first row)
+	for _, row in episodes.iloc[1:].iterrows():
+
+		# define all next values
+		next_start = row.loc['start']
+		next_start_index = row.loc['start_index']
+		next_stop = row.loc['stop']
+		next_stop_index = row.loc['stop_index']
+		next_label = None if not training else row.loc['label']
+		next_counter = row.loc['counter']
+
+		# check if there are 'distance_in_min' minutes apart from current and next ( + correction for some adjustment)
+		if next_start_index - current_stop_index <= hz * 60 * distance_in_min + correction:
+			
+			# here the two episodes are close to eachother, we update the values and continue the next row to see if we can group more. If it's the last row, we need to add it to the dataframe
+			current_stop_index = next_stop_index
+			current_stop = next_stop
+
+			# check if row is the last row
+			if next_counter == episodes.iloc[-1]['counter']:
+
+				# create the counter label
+				counter_label = f'{current_counter}-{next_counter}'
+
+				# save to new dataframe
+				grouped_episodes[counter_label] = pd.Series({ 	'counter' : counter_label,
+																'start_index' : current_start_index,
+																'start' : current_start,
+																'stop_index' : current_stop_index,
+																'stop' : current_stop,
+																'label' : None if not training else current_label })
+		else:			
+			
+			# create the counter label
+			counter_label = current_counter if (next_counter - current_counter == 1) else f'{current_counter}-{next_counter - 1}'
+
+			# save to new dataframe
+			grouped_episodes[counter_label] = pd.Series({ 	'counter' : counter_label,
+															'start_index' : current_start_index,
+															'start' : current_start,
+															'stop_index' : current_stop_index,
+															'stop' : current_stop,
+															'label' : None if not training else current_label})
+
+			# update tracker variables
+			current_start = next_start
+			current_start_index = next_start_index
+			current_stop = next_stop
+			current_stop_index = next_stop_index
+			current_label = next_label
+			current_counter = next_counter
+
+			# check if last row then also include by itself
+			if next_counter == episodes.iloc[-1]['counter']:
+
+				# save to new dataframe
+				grouped_episodes[next_counter] = pd.Series({ 	'counter' : next_counter,
+																'start_index' : current_start_index,
+																'start' : current_start,
+																'stop_index' : current_stop_index,
+																'stop' : current_stop,
+																'label' : None if not training else current_label })
+
+	return grouped_episodes
+
+

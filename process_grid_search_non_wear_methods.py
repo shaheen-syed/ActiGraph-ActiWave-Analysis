@@ -510,7 +510,7 @@ def perform_plot_comparison_default_optimized(folder_results = os.path.join('fil
 		df[classification] = pd.Series(data)
 		df_all[classification] = pd.Series(data_all)
 
-	plot_classification_results_comparison(df.T)
+	# plot_classification_results_comparison(df.T)
 	plot_classification_results_comparison_all(df_all)
 
 
@@ -1093,16 +1093,16 @@ if __name__ == '__main__':
 	"""
 		4) plot grid search analysis contourplot
 	"""
-	perform_plot_grid_search(nw_method = 'hecht')
-	perform_plot_grid_search(nw_method = 'troiano')
-	perform_plot_grid_search(nw_method = 'choi')
-	perform_plot_grid_search(nw_method = 'hees')
+	# perform_plot_grid_search(nw_method = 'hecht')
+	# perform_plot_grid_search(nw_method = 'troiano')
+	# perform_plot_grid_search(nw_method = 'choi')
+	# perform_plot_grid_search(nw_method = 'hees')
 
 	"""
 		OTHER PLOTS
 	"""
 	
-	# perform_plot_comparison_default_optimized()
+	perform_plot_comparison_default_optimized()
 
 
 	set_end(tic, process)

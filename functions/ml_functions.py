@@ -22,7 +22,7 @@ from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import AdaBoostClassifier
-	
+from sklearn.neural_network import MLPClassifier	
 
 """
 	IMPORTED FUNCTIONS
@@ -51,6 +51,7 @@ def create_train_test_split(X, Y, test_size = .2, shuffle = True, random_state =
 
 	# split data into train and test
 	return train_test_split(X, Y, test_size = test_size, shuffle = shuffle, random_state = random_state, **kwargs)
+
 
 def return_k_folds(n_splits, shuffle = True, random_state = 42):
 	"""
@@ -293,7 +294,12 @@ def create_parameter_grid(grid_setup):
 		if row['hyperparameter'] == 'adaboost_learning_rate':
 			param_grid.update({'classify__learning_rate' : range(row['min'], row['max'])})			
 
-
+		"""
+			MULTILAYER PERCEPTRON
+		"""
+		if row['hyperparameter'] == 'hidden_layer_sizes':
+			param_grid.update({'classify__hidden_layer_sizes' : row['neurons']})
+	
 		"""
 			VECTORIZER
 		"""
@@ -343,6 +349,8 @@ def get_classifier(classifier, random_state = None):
 		return DecisionTreeClassifier(random_state = random_state)
 	elif classifier == 'AdaBoostClassifier':
 		return AdaBoostClassifier(random_state = random_state)
+	elif classifier == 'MLPClassifier':
+		return MLPClassifier(early_stopping = True, random_state = random_state)
 	else:
 		logging.error('Classifier {} not part of classifier list'.format(classifier))
 		exit(1)

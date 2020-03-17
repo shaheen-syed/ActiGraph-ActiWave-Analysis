@@ -1,0 +1,7 @@
+local:
+  actiwave_actigraph_mapping_hdf5_file : ['users', 'shaheensyed', 'hdf5', 'ACTIWAVE_ACTIGRAPH_MAPPING.hdf5']
+  dilip_hdf5 : ['users', 'shaheensyed', 'hdf5', 'DILIP.hdf5']
+  non_wear_hdf5_file : ['users', 'shaheensyed', 'hdf5', 'NON-WEAR.hdf5']
+  actigraph_hdf5_file : ['Volumes', 'LaCie', 'ACTIGRAPH_TU7.hdf5']
+  actiwave_hdf5_file : ['Volumes', 'LaCie', 'ACTIWAVE_TU7.hdf5']
+  start_stop_labels_folder : ['labels', 'start_stop_all']

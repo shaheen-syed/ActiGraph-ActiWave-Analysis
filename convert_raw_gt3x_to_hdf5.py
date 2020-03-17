@@ -35,7 +35,7 @@ GT3X_FOLDER = os.path.join(os.sep, 'Volumes', 'LaCie_server', 'Actigraph_raw')
 HDF5_SAVE = os.path.join(os.sep, 'Volumes', 'LaCie_server', 'ACTIGRAPH_TU7.hdf5')
 
 
-def batch_process_gt3x_files(gt3x_folder = GT3X_FOLDER, use_parallel = False, num_jobs = cpu_count(), limit = None, skip_n = 0, ignore_already_processed_subjects = True, remove_unwanted_files = True):
+def batch_process_gt3x_files(gt3x_folder = GT3X_FOLDER, use_parallel = False, num_jobs = cpu_count(), limit = None, skip_n = 0, ignore_already_processed_subjects = False, remove_unwanted_files = False):
 	"""
 	Batch processing to convert actigraph .gt3x (raw acceleration) files into YXZ acceleration in g, and also the corresponding time array so we know the start and stop times of the signal
 
