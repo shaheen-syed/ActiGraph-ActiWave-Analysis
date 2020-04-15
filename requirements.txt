@@ -1,0 +1,14 @@
+sqlite3
+pandas
+numpy
+joblib
+scipy
+sklearn
+seaborn
+matplotlib
+pyedflib
+yaml
+tensorflow
+bitstring
+h5py
+resampy
