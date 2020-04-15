@@ -1,4 +1,3 @@
-sqlite3
 pandas
 numpy
 joblib
@@ -7,8 +6,10 @@ sklearn
 seaborn
 matplotlib
 pyedflib
-yaml
+pyyaml
 tensorflow
 bitstring
 h5py
 resampy
+glob2
+psutil
