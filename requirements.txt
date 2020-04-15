@@ -13,3 +13,4 @@ h5py
 resampy
 glob2
 psutil
+bitstring
