@@ -1,0 +1,16 @@
+pandas
+numpy
+joblib
+scipy
+sklearn
+seaborn
+matplotlib
+pyedflib
+pyyaml
+tensorflow
+bitstring
+h5py
+resampy
+glob2
+psutil
+bitstring
