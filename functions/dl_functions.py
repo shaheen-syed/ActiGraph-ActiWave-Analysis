@@ -12,7 +12,7 @@ import tensorflow as tf
 from tensorflow import keras
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-
+from tensorflow.keras.callbacks import EarlyStopping # stop training early if it does not further improve
 from functions.helper_functions import save_pickle
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -244,6 +244,12 @@ def create_1d_cnn_non_wear_episodes(X, Y, save_model_folder, model_name, cnn_typ
 		keras.metrics.AUC(name='auc'),
 	]
 
+
+	# empty list to add callbacks to
+	callback_list = []
+	# early stopping callback
+	callback_list.append(EarlyStopping(monitor = 'val_loss', restore_best_weights = True, min_delta = 0, patience = 25, verbose = 1, mode = 'auto'))
+
 	# context manager for multi-gpu
 	with mirrored_strategy.scope():
 
@@ -279,7 +285,6 @@ def create_1d_cnn_non_wear_episodes(X, Y, save_model_folder, model_name, cnn_typ
 			model.add(keras.layers.Dense(50, activation='relu'))
 			model.add(keras.layers.Dense(1, activation = 'sigmoid'))
 
-
 		elif cnn_type == 'v4':
 			
 			model.add(keras.layers.Conv1D(filters = 10, kernel_size = 10, activation='relu', input_shape = X.shape[1:]))
@@ -299,7 +304,7 @@ def create_1d_cnn_non_wear_episodes(X, Y, save_model_folder, model_name, cnn_typ
 		model.compile(optimizer = keras.optimizers.Adam(lr = 1e-3), loss = keras.losses.BinaryCrossentropy(), metrics = METRICS)
 
 		# fit the model
-		history = model.fit(train_dataset, epochs = epoch, validation_data = dev_dataset)#, class_weight = class_weight)
+		history = model.fit(train_dataset, epochs = epoch, validation_data = dev_dataset, callbacks = callback_list)#, class_weight = class_weight)
 
 		# evaluate on test set
 		history_test = model.evaluate(test_dataset)

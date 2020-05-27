@@ -100,7 +100,7 @@ def create_epoch_datasets(subject, S, dataset_prefix, idx = 1, total = 1):
 """
 	GRID SEARCH
 """
-def perform_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder = os.path.join('files', 'grid-search-hecht')):
+def perform_grid_search(method, nw_method, num_jobs = cpu_count(), save_folder = os.path.join('files', 'grid-search-hees_original')):
 	"""
 	Perform grid search analysis on epoch or raw data. For epoch data, set method = 'epoch', for raw set method = 'raw'
 
@@ -944,6 +944,17 @@ def _get_grid_search_parameter_combinations(nw_method):
 		# value range min number of axes (default 2)
 		VA = [1, 2, 3]
 
+		"""
+		Default combinations and optimized combinations for testing
+		"""
+		# MW = [135]
+		# WO = [1]
+		# ST = [8]
+		# SA = [2]
+		# VT = [1]
+		# VA = [1]
+		
+
 		combinations = [f'{mw}-{wo}-{st}-{sa}-{vt}-{va}' for mw in MW for wo in WO for st in ST for sa in SA for vt in VT for va in VA]
 
 		parameters = {'MW' : MW, 'WO' : WO, 'ST' : ST, 'SA' : SA, 'VT' : VT, 'VA' : VA}
@@ -966,7 +977,7 @@ def _get_grid_search_parameter_combinations(nw_method):
 
 	return combinations, parameters, labels, default_parameters
 
-def _calculate_subject_combination_confusion_matrix(method, combination, subjects, nw_method, subject_combination_tracker = None, subjects_data = None, verbose = False, idx = 1, total = 1):
+def _calculate_subject_combination_confusion_matrix(method, combination, subjects, nw_method, subject_combination_tracker = None, subjects_data = None, verbose = True, idx = 1, total = 1):
 
 	# verbose
 	if verbose:
@@ -979,7 +990,10 @@ def _calculate_subject_combination_confusion_matrix(method, combination, subject
 	classification_data = []
 
 	# process training fold subjects
-	for subject in subjects:
+	for i, subject in enumerate(subjects):
+
+		if verbose:
+			logging.info(f'Processing subject {i}/{len(subjects)}')
 
 		"""
 		CHECK IF SUBJECT COMBINATION HAS ALREADY BEEN PROCESSED
@@ -1080,7 +1094,7 @@ if __name__ == '__main__':
 	# perform_grid_search(method = 'epoch', nw_method = 'hecht')
 	# perform_grid_search(method = 'epoch', nw_method = 'troiano')
 	# perform_grid_search(method = 'epoch', nw_method = 'choi')
-	# perform_grid_search(method = 'raw', nw_method = 'hees')
+	perform_grid_search(method = 'raw', nw_method = 'hees')
 
 	"""
 		3) perform cross validated grid search
@@ -1102,7 +1116,7 @@ if __name__ == '__main__':
 		OTHER PLOTS
 	"""
 	
-	perform_plot_comparison_default_optimized()
+	# perform_plot_comparison_default_optimized()
 
 
 	set_end(tic, process)

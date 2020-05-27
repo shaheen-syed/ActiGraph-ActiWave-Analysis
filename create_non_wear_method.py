@@ -24,7 +24,9 @@ from functions.helper_functions import 	set_start, set_end, load_yaml, read_dire
 from functions.datasets_functions import get_actigraph_acc_data
 from functions.hdf5_functions import save_data_to_group_hdf5, get_all_subjects_hdf5, read_dataset_from_group, get_datasets_from_group
 from functions.raw_non_wear_functions import find_candidate_non_wear_segments_from_raw, find_consecutive_index_ranges, group_episodes
-from functions.plot_functions import plot_merged_episodes, plot_cnn_classification_performance, plot_training_results_per_epoch, plot_cnn_inferred_nw_time, plot_episodes_used_for_training, plot_baseline_performance, plot_performance_cnn_nw_method, plot_episodes_used_for_training_combined
+from functions.plot_functions import 	plot_merged_episodes, plot_cnn_classification_performance, plot_training_results_per_epoch,\
+										plot_baseline_performance, plot_start_stop_segments,\
+										plot_baseline_performance_compare_f1, plot_overview_all_raw_nw_methods
 from functions.datasets_functions import get_actigraph_acc_data, get_actiwave_acc_data, get_actiwave_hr_data
 from functions.ml_functions import get_confusion_matrix, calculate_classification_performance
 from functions.dl_functions import create_1d_cnn_non_wear_episodes, load_tf_model
@@ -39,11 +41,13 @@ def merge_close_episodes_from_training_data(read_folder, save_folder):
 	Merge epsisodes that are close to each other. Two close episodes could for instance have some artificial movement between them.
 	Note that this merging is done on our labeled gold standard dataset, and this merging is only for training purposes.
 
-	Note that merge and group are used here interchangably
+	Note that the words merge and group are used here interchangably
+
+	
 
 	Parameters
 	-----------
-	label_folder : os.path()
+	read_folder : os.path()
 		folder location of start and stop labels for non-wear time
 	save_folder : os.path()
 		folder where to save the merged episodes to
@@ -124,6 +128,24 @@ def merge_close_episodes_from_training_data(read_folder, save_folder):
 		grouped_episodes.T.to_csv(os.path.join(save_folder, f'{subject}.csv'))
 
 def process_calculate_true_nw_time_from_labeled_episodes(merged_episodes_folder, hdf5_read_file, hdf5_save_file, std_threshold = 0.004):
+	"""
+	Read labeled episodes and create a non-wear vector with gold standard labels.
+	These labels have a start and stop timestamp with a 1 minute resolution. We also extend the edges to obtain a resolution on a 1-second level.
+	This extension is done by incrementally extending the edges with 1-second intervals. If the intervals are below the std_threshold, then include that interval into 
+	the non-wear episode.
+
+	Paramaters
+	-------------
+	merged_episodes_folder : os.path
+		folder location where episodes are stored that have undergone the merged function. See function merge_close_episodes_from_training_data 
+	hdf5_read_file : os.path
+		file location of the HDF5 file that contains all the raw data
+	hdf5_save_file : os.path
+		file name to create a new HDF5 file for
+	std_threshold : float (optional)
+		standard deviation threshold that is used to calculate if the acceleration is below this value. The 0.004 threshold is used to find episodes where the acceleration
+		is flat (i.e., no activity)
+	"""
 
 	# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
 	subjects = get_all_subjects_hdf5(hdf5_file = hdf5_read_file)
@@ -222,11 +244,36 @@ def process_plot_merged_episodes(episodes_folder, grouped_episodes_folder, hdf5_
 """
 def perform_grid_search_1d_cnn(label_folder, hdf5_read_file, save_data_location, save_model_folder, file_limit = None):
 	"""
-	Create a convolutional neural network through grid search. Here we explore the following grid search variables
-		- episode window (how big a start or a stop episode needs to be)
-		- cnn type (see v1, v2 etc in dl_functions), here we try out different architectures
-	"""
+	A total of four 1D CNN architectures were constructed and trained for the binary classification of our features as either belonging 
+	to true non-wear time or to wear time; Figure 2 shows the four proposed architectures labelled V1, V2, V3, and V4. The input feature 
+	is a vector of w x 3 (i.e. three orthogonal axes), where w is the window size ranging from 2–10 seconds. In total, 10 x 4 = 40 different 
+	CNN models were trained. CNN V1 can be considered a basic CNN with only a single convolutional layer followed by a single fully connected 
+	layer. CNN V2 and V3 contain additional convolutional layers with different kernel sizes and numbers of filters. Stacking convolutional 
+	layers enables the detection of high-level features, unlike single convolutional layers. CNN V4 contains a max pooling layer after each 
+	convolutional layer to merge semantically similar features while reducing the data dimensionality.(LeCun et al., 2015) A CNN architecture 
+	with max pooling layers has shown varying results, from increased classification performance (Song-Mi Lee et al., 2017) to pooling layers 
+	interfering with the convolutional layer’s ability to learn to down sample the raw sensor data.(Ordóñez & Roggen, 2016) All proposed CNN 
+	architectures have a single neuron in the output layer with a sigmoid activation function for binary classification. 
 
+	Training was performed on 60% of the data, with 20% used for validation and another 20% used for testing. All models were trained for up to 250 
+	epochs with the Adam optimiser (Kingma & Ba, 2014) and a learning rate of 0.001. Loss was calculated with binary cross entropy and, additionally, 
+	early stopping was implemented to monitor the validation loss with a patience of 25 epochs and restore weights of the lowest validation loss. 
+	This means that training would terminate if the validation loss did not improve for 25 epochs, and the best model weights would be restored. All 
+	models were trained on 2 x Nvidia RTX 2080TI graphics cards with the Python library TensorFlow (v2.0).
+
+	Parameters
+	----------
+	label_folder : os.path
+		folder location where gold standard labels are saved
+	hdf5_read_file : os.path
+		location of HDF5 file that contains the raw activity data for actigraph and actiwave
+	save_data_location : os.path
+		folder location where to save the training features to
+	save_model_folder : os.path
+		folder location where to save the trained CNN model to
+	file_limit : int (optional)
+		can be used for debugging/testing since it limits the number of features to be created
+	"""
 
 	# read all files to process
 	F = [f for f in read_directory(label_folder) if f[-4:] == '.csv'][:file_limit]
@@ -235,8 +282,8 @@ def perform_grid_search_1d_cnn(label_folder, hdf5_read_file, save_data_location,
 		GRID SEARCH VARIABLES
 	"""
 	# episode window in seconds
-	EW = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-	# cnn types
+	EW = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+	# cnn architectures (see dl_functions about the actual architecture of these types)
 	CNN = ['v1', 'v2', 'v3', 'v4']
 	
 	"""
@@ -244,7 +291,7 @@ def perform_grid_search_1d_cnn(label_folder, hdf5_read_file, save_data_location,
 	"""
 
 	# define number of epochs
-	epoch = 50
+	epoch = 250
 	# training proportion of the data
 	train_split = 0.6
 	# development proportion of the data (test size will be the remainder of train + dev)
@@ -253,9 +300,10 @@ def perform_grid_search_1d_cnn(label_folder, hdf5_read_file, save_data_location,
 	"""
 		OTHER SETTNGS
 	"""
-	save_features = True
-	# load features from disk, can only be done if created first
-	load_features_from_disk = False
+	# set to true if created features need to be stored to disk (this can then be used to read from disk which is much faster)
+	save_features = False
+	# load features from disk, can only be done if created first (see save_features Boolean value)
+	load_features_from_disk = True
 
 	# perform combinations
 	for idx, episode_window_sec in enumerate(EW):
@@ -263,7 +311,6 @@ def perform_grid_search_1d_cnn(label_folder, hdf5_read_file, save_data_location,
 		"""
 			CREATE START AND STOP EPISODES
 		"""
-
 		try:
 
 			# verbose
@@ -344,15 +391,13 @@ def perform_grid_search_1d_cnn(label_folder, hdf5_read_file, save_data_location,
 				# create 1D cnn
 				create_1d_cnn_non_wear_episodes(X, Y, save_model_folder, model_name, cnn_type,  epoch = epoch, train_split = train_split, dev_split = dev_split, return_model = False)
 
-
 		except Exception as e:
 			
 			logging.error(f'Unable to create 1D CNN model with EP: {episode_window_sec}, error : {e}')
 			
-
 def get_start_and_stop_episodes(file, label_folder, hdf5_read_file, episode_window_sec, idx = 1, total = 1, hz = 100, save_location = os.path.join(os.sep, 'users', 'shaheensyed', 'hdf5', 'start_stop_data')):
 	"""
-	Get start and stop episodes from activity data and save to disk
+	Get start and stop episodes from activity data
 
 	Parameters
 	-----------
@@ -360,11 +405,22 @@ def get_start_and_stop_episodes(file, label_folder, hdf5_read_file, episode_wind
 		file location of csv file that contains episodes
 	label_folder : os.path
 		folder location of start and stop labels for non-wear time
-	save_label_folder : os.path
-		folder location where to save the labels to for each subject together with type, window, subject, label, index, and counter information
 	hdf5_read_file : os.path
 		location of HDF5 file that contains raw acceleration data per participant
+	episode_window_sec : int
+		window size in seconds that will determine how long the preceding and following features will be
+	idx : int (optional)
+		index of the file to process, only used for verbose and can be usefull when multiprocessing is one
+	total : int (optional)
+		total number of fies to be processed, only used for verbose and can be usefull when multiprocessing is one
+	save_location : os.path
+		folder location where to save the labels to for each subject together with type, window, subject, label, index, and counter information
 
+
+	Returns
+	---------
+	data : dict()
+		dictionary that will hold episodes by label
 	"""
 
 	# extract subject from file
@@ -386,24 +442,18 @@ def get_start_and_stop_episodes(file, label_folder, hdf5_read_file, episode_wind
 	for _, row in episodes.iterrows():
 
 		# parse out variables from dataframe row
-		# start = row.loc['start']
 		start_index = row.loc['start_index']
-		# stop = row.loc['stop']
 		stop_index = row.loc['stop_index']
+		
+		# note that we flip the encoding here. so labels with 0 become 1, and labels that are 1 become zero. This is basically changing how we define the positive class
 		label = 1 - row.loc['label']
-		# counter = row.loc['counter']
-
-		# logging.info(f'Counter : {counter}')
-
-		# logging.info(f'Start_index : {start_index}, Stop_index: {stop_index}')
-
+		
 		# forward search to extend stop index
 		stop_index = _forward_search_episode(actigraph_acc, stop_index, hz = 100, max_search_min = 5, std_threshold = 0.004, verbose = False)
 		# backwar search to extend start index
 		start_index = _backward_search_episode(actigraph_acc, start_index, hz = 100, max_search_min = 5, std_threshold = 0.004, verbose = False)
 
-		# logging.info(f'Start_index : {start_index}, Stop_index: {stop_index}')
-
+		
 		# get start episode
 		start_episode = actigraph_acc[start_index - (episode_window_sec * hz) : start_index]
 		# get stop episode
@@ -421,54 +471,54 @@ def get_start_and_stop_episodes(file, label_folder, hdf5_read_file, episode_wind
 """
 	CREATE NON-WEAR TIME BY USING CNN MODEL
 """
-
-def batch_process_get_nw_time_from_raw(hdf5_acc_file, hdf5_nw_file, limit = None, skip_n = 0):
+def batch_process_get_nw_time_from_raw(hdf5_acc_file, hdf5_nw_file, limit = None, skip_n = 0, hz = 100):
 	"""
-	Batch process finding non-wear time in actigraph data based on mapping with actiwave data
+	Grid search approach to calculate non-wear time from raw data by using the CNN model and trying out different hyperparameter values
 
 	Parameters
 	-----------
+	hdf5_read_file : os.path
+		location of HDF5 file that contains the raw activity data for actigraph and actiwave
+	hdf5_nw_file : os.path
+		location of HDF5 file where to save the inferred non-wear to
 	limit : int (optional)
 		limit the number of subjects to be processed
 	skip_n : int (optional)
 		skip first N subjects
-	use_parallel = Boolean (optional)
-		Set to true of subjects need to be processed in parallel, this will execute much faster
-	num_jobs = int (optional)
-		if parallel is set to true, then this indicates have many jobs at the same time need to be executed. Default set to the number of CPU cores
+	hz : int (optional)
+		sampling frequency of the raw acceleration data (defaults to 100HZ)
 	"""
 
 	# which CNN model to use
-	model_folder = os.path.join('files', 'models', 'nw', 'cnn1d_60_20_20')
+	model_folder = os.path.join('files', 'models', 'nw', 'cnn1d_60_20_20_early_stopping')
+	# define architecture type
 	cnn_type = 'v2'
-	episode_window_sec = 6
+	# define window length
+	episode_window_sec = 3
 
-	# grid parameters
+	"""
+		GRID SEARCH PARAMETERS
+	"""
+	# standard deviation threshold
 	std_range = [0.004]
+	# default classification when an episode does not have a starting or stop feature window (happens at t=0 or at the end of the data)
 	edge_true_or_false_range = [True, False]
+	# logical operator to see if both sides need to be classified as non-wear time (AND) or just a single side (OR)
 	start_stop_label_decision_range = ['or', 'and']
+	# merging of two candidate non-wear episodes that are 'distance_in_min_range' minutes apart from each other
 	distance_in_min_range = [1, 2, 3, 4, 5]
 
-	for std in std_range:
-
+	# loop over each standard deviation
+	for std_threshold in std_range:
+		# loop over each default setting
 		for edge_true_or_false in edge_true_or_false_range:
-
-			for s_s in start_stop_label_decision_range:
-
-				for d_in_min in distance_in_min_range:
-
-					# settings
-					hdf5_read_file = hdf5_acc_file
-					hdf5_save_file = hdf5_nw_file
-					std_threshold = std
-					hz = 100
-					# true non-wear time when one start/stop is classified as non-wear time, then use 'or', or both sides need to be classified as non-wear time, then use 'and'
-					start_stop_label_decision = s_s
-					# the distance in minutes when to group two candidate non-wear time episodes that are close to each other, how close is defined here in minutes
-					distance_in_min = d_in_min
+			# loop over logical operator
+			for start_stop_label_decision in start_stop_label_decision_range:
+				# loop over each merging distance
+				for distance_in_min in distance_in_min_range:
 
 					# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
-					subjects = get_all_subjects_hdf5(hdf5_file = hdf5_read_file)[0 + skip_n:limit]
+					subjects = get_all_subjects_hdf5(hdf5_file = hdf5_acc_file)[0 + skip_n:limit]
 
 					# exclude subjects that have issues with their data
 					subjects = [s for s in subjects if s not in get_subjects_with_invalid_data()]
@@ -476,7 +526,7 @@ def batch_process_get_nw_time_from_raw(hdf5_acc_file, hdf5_nw_file, limit = None
 					# use parallel processing to speed up processing time
 					executor = Parallel(n_jobs = cpu_count(), backend = 'multiprocessing')
 					# create tasks so we can execute them in parallel
-					tasks = (delayed(process_get_nw_time_from_raw)(subject, model_folder, hdf5_read_file, hdf5_save_file, cnn_type, std_threshold, episode_window_sec, start_stop_label_decision, distance_in_min, edge_true_or_false, hz, i, len(subjects)) for i, subject in enumerate(subjects))
+					tasks = (delayed(process_get_nw_time_from_raw)(subject, model_folder, hdf5_acc_file, hdf5_nw_file, cnn_type, std_threshold, episode_window_sec, start_stop_label_decision, distance_in_min, edge_true_or_false, hz, i, len(subjects)) for i, subject in enumerate(subjects))
 					# execute task
 					executor(tasks)
 
@@ -487,9 +537,32 @@ def	process_get_nw_time_from_raw(subject, model_folder, hdf5_read_file, hdf5_sav
 	
 	Parameters
 	-----------
-
-	Returns
-	-----------
+	subject : string
+		subject ID to process
+	model_folder : os.path
+		folder location where different CNN models are stored
+	hdf5_read_file : os.path
+		file location of HDF5 that contains raw acceleration data
+	hdf5_save_file : os.path
+		file location where to save the inferred non-wear time to
+	cnn_type : string
+		what type of CNN architecture to use (v1, v2, v3 or v4 for example)
+	std_threshold : float
+		standard deviation threshold
+	episode_window_sec : int
+		define window length (for example 3 seconds)
+	start_stop_label_decision : string
+		logical operator to see if both sides need to be classified as non-wear time (AND) or just a single side (OR)
+	distance_in_min : int
+		number of minutes that will be used to merg two candidate non-wear episodes that are 'distance_in_min_range' minutes apart from each other
+	edge_true_or_false : Boolen
+		default classification when an episode does not have a starting or stop feature window (happens at t=0 or at the end of the data)
+	hz : int
+		sample frequency of the raw data
+	idx : int (optional)
+		index of the file to process, only used for verbose and can be usefull when multiprocessing is one
+	total : int (optional)
+		total number of files to be processed, only used for verbose and can be usefull when multiprocessing is one
 
 	"""
 
@@ -541,11 +614,9 @@ def	process_get_nw_time_from_raw(subject, model_folder, hdf5_read_file, hdf5_sav
 	# create dataframe from segments
 	episodes = pd.DataFrame.from_dict(dic_segments)
 
-
 	"""
 		MERGE EPISODES THAT ARE CLOSE TO EACH OTHER
-	"""
-				
+	"""				
 	grouped_episodes = group_episodes(episodes = episodes.T, distance_in_min = distance_in_min, correction = 3, hz = hz, training = False).T
 
 	"""
@@ -633,19 +704,33 @@ def	process_get_nw_time_from_raw(subject, model_folder, hdf5_read_file, hdf5_sav
 	save_data_to_group_hdf5(group = group_name, data = nw_vector, data_name = subject, overwrite = True, hdf5_file = hdf5_save_file)
 
 def calculate_cnn_classification_performance(hdf5_read_file):
+	"""
+	Calculate the classification performance metrics of several CNN models
 
-	
-	# which cnn type to use
+	Parameters
+	----------
+	hdf5_read_file : os.path
+		file location of the HDF5 file that contains the inferred non-wear time data and true non-wear time
+		Note that the function batch_process_get_nw_time_from_raw will need to be executed first to obtain inferred non-wear time vectors
+		This function only calculates performance measures based on the inferred and true non-wear time
+	"""
+
+	# define architecture type
 	cnn_type = 'v2'
-	# window length in seconds
-	episode_window_sec = 6
+	# define window length
+	episode_window_sec = 3
 
-	# grid parameters
+	"""
+		PARAMETERS
+	"""
+	# standard deviation threshold
 	std_threshold_range = [0.004]
+	# default classification when an episode does not have a starting or stop feature window (happens at t=0 or at the end of the data)
 	edge_true_or_false_range = [True, False]
+	# logical operator to see if both sides need to be classified as non-wear time (AND) or just a single side (OR)
 	start_stop_label_decision_range = ['or', 'and']
-	distance_in_min_range = [2, 3, 4]
-	distance_in_min_range = [1,5]
+	# merging of two candidate non-wear episodes that are 'distance_in_min_range' minutes apart from each other
+	distance_in_min_range = [1, 2, 3, 4, 5]
 
 	for std_threshold in std_threshold_range:
 
@@ -712,8 +797,14 @@ def calculate_cnn_classification_performance(hdf5_read_file):
 					# tranpose dataframe
 					all_results = all_results.T
 
+					# create subfolder based on cnn type and seconds used
+					subfolder = f'{cnn_type}_{episode_window_sec}'
+
+					# create subfolder if not exists
+					create_directory(os.path.join('files', 'cnn_nw_performance', subfolder))
+
 					# save to CSV
-					all_results.to_csv(os.path.join('files', 'cnn_nw_performance', f'{inferred_nw_time_group_name}_per_subject.csv'))
+					all_results.to_csv(os.path.join('files', 'cnn_nw_performance', subfolder, f'{inferred_nw_time_group_name}_per_subject.csv'))
 					
 					
 					tn = all_results['tn'].sum()
@@ -726,8 +817,9 @@ def calculate_cnn_classification_performance(hdf5_read_file):
 					# calculate classification performance such as precision, recall, f1 etc.
 					classification_performance = calculate_classification_performance(tn, fp, fn, tp)
 
+
 					df_classification_performance = pd.DataFrame(pd.Series(classification_performance))
-					df_classification_performance.to_csv(os.path.join('files', 'cnn_nw_performance', f'{inferred_nw_time_group_name}_all_subjects.csv'))
+					df_classification_performance.to_csv(os.path.join('files', 'cnn_nw_performance', subfolder, f'{inferred_nw_time_group_name}_all_subjects.csv'))
 
 
 """
@@ -735,6 +827,29 @@ def calculate_cnn_classification_performance(hdf5_read_file):
 """
 
 def batch_evaluate_baseline_models(hdf5_acc_file, hdf5_nw_file):
+	"""
+	Calculate non-wear time with two baseline algorithms. See paper description below
+
+	Description from paper:
+	Our proposed non-wear algorithm was compared to several baseline algorithms and existing non-wear detection algorithms to evaluate its 
+	performance (van Hees et al., 2011, 2013) These baseline algorithms employ a similar analytical approach commonly found in count-based 
+	algorithms(L. Choi et al., 2011; Hecht et al., 2009; Troiano et al., 2007), that is, detecting episodes of no activity by using an interval 
+	of varying length. The first baseline algorithm detected episodes of no activity when the raw acceleration data was below a SD threshold 
+	of 0.004g, 0.005g, 0.006g, and 0.007g and the duration did not exceed an interval length of 15, 30, 45, 60, 75, 90, 105, or 120 minutes. 
+	A similar approach was proposed in another recent study as the SD_XYZ method,(Ahmadi et al., 2020) although the authors fixed the 
+	threshold to 13mg and the interval to 30 minutes for a wrist worn accelerometer. Throughout this paper, the first baseline algorithm is 
+	referred to as the XYZ algorithm. The second baseline algorithm was similar to the first baseline algorithm, albeit that the SD threshold 
+	was applied to the vector magnitude unit (VMU) of the three axes, where VMU is calculated as √(〖acc〗_x^2+〖acc〗_y^2+ 〖acc〗_z^2  ), 
+	with accx, accy, and accz referring to each of the orthogonal axes. A similar approach has recently been proposed as the SD_VMU 
+	algorithm (Ahmadi et al., 2020). Throughout this paper, this baseline algorithm is referred to as the VMU algorithm. 
+	
+	Parameters
+	-------------
+	hdf5_acc_file
+		file location of the HDF5 file that contains the raw acceleration data
+	hdf5_nw_file : os.path
+		file location of the HDF5 file that contains the inferred non-wear time data and true non-wear time
+	"""
 
 	# standard deviation range
 	std_threshold_range = [0.004, 0.005, 0.006, 0.007]
@@ -778,6 +893,23 @@ def batch_evaluate_baseline_models(hdf5_acc_file, hdf5_nw_file):
 
 
 def evaluate_baseline_models(subjects, hdf5_acc_file, true_nw_time, std_threshold, episode_length, use_vmu = True, save_folder = os.path.join('files', 'baseline_performance_vmu')):
+	"""
+	Function that is part of the batch_evaluate_baseline_models function.
+	Here we calculate the performance of a single parameterized baseline model.
+
+	Parameters
+	------------
+	subjects : list
+		list of all subject ID that we want to include when calculating the performance of this baseline algorithm. Typically all available subjects will be used
+	hdf5_acc_file
+		file location of the HDF5 file that contains the raw acceleration data
+	hdf5_nw_file : os.path
+		file location of the HDF5 file that contains the inferred non-wear time data and true non-wear time
+	std_threshold : float
+		standard deviation threshold used inside this baseline algorithm
+	episode_length : int
+		this can be seen as the interval. The interval is used as a minimum window in which the 'std_threshold' need to be below in order to classify as non-wear time.
+	"""
 
 	# create the feature data
 	executor = Parallel(n_jobs = cpu_count(), backend = 'multiprocessing')
@@ -822,7 +954,7 @@ def evaluate_baseline_models(subjects, hdf5_acc_file, true_nw_time, std_threshol
 	# save to CSV
 	all_results.to_csv(os.path.join(save_folder, f'{std_threshold}_{episode_length}_per_subject.csv'))
 	
-	
+	# count occurences of true negatives (tn), false positives (fp), false negatives (fn), and true positives (tp)
 	tn = all_results['tn'].sum()
 	fp = all_results['fp'].sum()
 	fn = all_results['fn'].sum()
@@ -833,26 +965,123 @@ def evaluate_baseline_models(subjects, hdf5_acc_file, true_nw_time, std_threshol
 	# calculate classification performance such as precision, recall, f1 etc.
 	classification_performance = calculate_classification_performance(tn, fp, fn, tp)
 
+	# create dataframe
 	df_classification_performance = pd.DataFrame(pd.Series(classification_performance))
+	# store dataframe as CSV file
 	df_classification_performance.to_csv(os.path.join(save_folder, f'{std_threshold}_{episode_length}_all.csv'))
-				
+
 """
-	PLOT CLASSIFICATION PERFORMANCE
+	FUNCTIONS THAT WILL CREATE PLOTS THAT ARE USED WITHIN THE PAPER:
+	A novel algorithm to detect non-wear time from raw accelerometer data using convolutional neural networks
 """
 
-def process_plot_cnn_classification_performance(model_folder):
+def process_plot_start_stop_segments(merged_episodes_folder, hdf5_acc_file, plot_folder, hz = 100, std_threshold = 0.004):
+	"""
+	Start or the stop segments of candidate non-wear episodes where features of a length of 2-10 seconds were extracted
+	This basically shows raw acceleration data of candidate non-wear episodes from where we extracted preceding and following features
 
-	# all data for plotting
+	[FIGURE 1] Start or the stop segments of candidate non-wear episodes where features of a length of 2-10 seconds were extracted; 
+	(a) start or stop episodes of true non-wear time, (b) start or stop episodes of wear time.
+	
+	Parameters
+	-----------
+	merged_episodes_folder : os.path
+		folder location that contain candidate non-wear episodes with start and stop timestamps (these have been merged, meaning, that two episodes
+		in close proximity have been merged together to from a larger one)
+	hdf5_acc_file : os.path
+		file location of the HDF5 file that contains the raw acceleration data
+	hz : int (optional)
+		sample frequency of the data. Basically to know how many data samples we have within a single second. Defaults to 100Hz
+	std_threshold : float (optional)
+		standard deviation threshold to find candidate non-wear episodes. This is used to extend the edges of an episode to go from 1-min resolution to 1-sec resolution
+	"""
+
+	# dictionary to hold plot data
+	plot_data = {'0' : [], '1' : []}
+
+	# define the length of the window in seconds
+	episode_window_sec = 20 * hz
+	# define how much of the flat line nees to be shown in the plot
+	show_flat_sec = 20 * hz
+
+	# read csv files in merged episodes folder and loop over each file in F
+	for f in read_directory(merged_episodes_folder):
+
+		# we limit since we don't want to plot more than 20 of each class type
+		if len(plot_data['0']) > 20 and len(plot_data['1']) > 20:
+			break
+
+		# extract subject from file
+		subject = re.search('[0-9]{8}', f)[0]
+
+		logging.info(f'=== Processing subject {subject} ===')
+
+		# read actigraph raw data for subject
+		actigraph_acc, *_ = get_actigraph_acc_data(subject, hdf5_file = hdf5_acc_file)
+
+		# read dataframe
+		df = pd.read_csv(f)
+
+		for _, row in df.iterrows():
+
+			# get the start timestamp
+			start_index = row.loc['start_index']
+			# get the stop timestamp
+			stop_index = row.loc['stop_index']
+			# get the label to know if it's non-wear time, or if its wear time
+			label = row.loc['label']
+			
+			# forward search to extend stop index (to get a 1-sec resolution)
+			stop_index = _forward_search_episode(actigraph_acc, stop_index, hz = hz, max_search_min = 5, std_threshold = std_threshold, verbose = False)
+			# backwar search to extend start index
+			start_index = _backward_search_episode(actigraph_acc, start_index, hz = hz, max_search_min = 5, std_threshold = std_threshold, verbose = False)
+
+			# get start episode
+			start_episode = actigraph_acc[start_index - episode_window_sec : start_index + show_flat_sec]
+			# get stop episode
+			stop_episode = actigraph_acc[stop_index - show_flat_sec: stop_index + episode_window_sec]
+			
+			# here we choose to show only the episodes that show large standard deviation within the acceleration data.
+			# this is just so we have nicer plots, rather then plotting the ones which show very flat lines
+			if start_episode.shape[0] == episode_window_sec + show_flat_sec:
+				if np.all(np.std(start_episode, axis = 0) > 0.1):
+					plot_data[f'{label}'].append((subject, start_episode))				
+			if stop_episode.shape[0] == episode_window_sec + show_flat_sec:
+				if np.all(np.std(stop_episode, axis = 0) > 0.1):
+					plot_data[f'{label}'].append((subject, stop_episode))
+
+	# call plot function to plot the data
+	plot_start_stop_segments(plot_data, plot_folder)
+
+def process_plot_cnn_classification_performance(model_folder, plot_folder):
+	"""
+	Create four heatmaps that show the classification performance metrics for the training, validation, and test set of the CNN model
+
+	[Figure 3] Accuracy, precision, recall, and F1 performance metrics for training data (60%), validation data (20%), 
+	and test data (20%) for the four architectures evaluated. All CNN models were trained for a total of 250 epochs with 
+	early stopping enabled, a patience of 250 epochs, and restoring of the best weights when the validation loss was the 
+	lowest. See the TensorFlow documentation for more info at https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping.
+	
+	Parameters
+	------------
+	model_folder : os.path
+		folder location that contains the trained CNN models
+	plot_folder : os.path
+		folder location where the heatmap plot needs to be saved to
+	"""
+
+	# define the different CNN architectures that need to be plotted
 	cnn_types = ['v1', 'v2', 'v3', 'v4']
-
 	plot_data = {x : None for x in cnn_types}
+	
+	# which windows to show
+	episode_window_sec = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-	episode_window_sec = [2, 3, 4, 5, 6, 7, 8, 9]
+	# dictionary that holds the number of epochs the model trained for
+	num_epochs = {f'{cnn}_{sec}' : 0 for cnn in cnn_types for sec in episode_window_sec}
 
-	# epoch data to use
-	epoch = 50
-
-	# columns to keep and rename to
+	# the key of the dictionary is the column we want to include in the plot, the value is a translation we use (this translation will be used within the plot, rather
+	# then the column name that contains underscores etc.)
 	columns = { 'accuracy' : 'accuracy train',
 				'precision' : 'precision train',
 				'recall' : 'recall train',
@@ -870,10 +1099,13 @@ def process_plot_cnn_classification_performance(model_folder):
 				#'test_auc' : 'AUC test',
 	}
 
+	# loop over each cnn architecture type
 	for cnn_type in cnn_types:
 
+		# empty dataframe to hold the plot data for the cnn_type
 		data = pd.DataFrame()
 
+		# loop over each window length (this defines the preceding and following segment length)
 		for ew in episode_window_sec:
 
 			# dynamically create training history file name based on cnn_type and episode window
@@ -884,8 +1116,13 @@ def process_plot_cnn_classification_performance(model_folder):
 			df_training = pd.read_csv(training_history)
 			df_test = pd.read_csv(test_history, index_col = 0)
 
+			# number of epochs the model trained for
+			epoch = df_training.iloc[-1].name + 1
+			# add epoch to dictionary
+			num_epochs[f'{cnn_type}_{ew}'] = epoch
+
 			# add epoch row to all data dataframe
-			data[ew] = pd.concat([df_training.iloc[epoch-1], df_test.T.iloc[0]], axis = 0)
+			data[ew] = pd.concat([df_training.iloc[-1], df_test.T.iloc[0]], axis = 0)
 		
 		# tranpose dataframe
 		data = data.T
@@ -895,157 +1132,58 @@ def process_plot_cnn_classification_performance(model_folder):
 		data['F1 val'] = 2 * data['val_tp'] / (2 * data['val_tp'] + data['val_fp'] + data['val_fn'])
 		data['F1 test'] = 2 * data['test_tp'] / (2 * data['test_tp'] + data['test_fp'] + data['test_fn'])
 
+		# take only the keys within the columns dictionary (so we could filter and only show the columns we want to)
 		data = data[[x for x in columns.keys()]]
+		# change the column name into a more human readable
 		data = data.rename(columns = columns)
 
+		# add a transposed version of the data dataframe to plot_data that holds the plot data for each cnn architecture
 		plot_data[cnn_type] = data.T
 
+	# call plot function to create the heatmap
+	plot_cnn_classification_performance(plot_data = plot_data, plot_folder = plot_folder)
 
-	plot_cnn_classification_performance(plot_data)
-
-def process_plot_cnn_training_results_per_epoch(model_folder, episode_window, cnn_type):
+def process_plot_baseline_performance(data_folder, plot_folder):
 	"""
-	Plot training results from model history
-	"""
+	Create heatmaps that show the classification performance of the baseline algorithms. We create three plots here:
+		- The F1 classification performance of the XYZ baseline algorithm (left), and the VMU baseline algorithm (right). 
+		- The accuracy, precision, recall, and F1 score for XYZ baseline
+		- The accuracy, precision, recall, and F1 score for VMU baseline
+	
+	[Figure 4] The F1 classification performance of the XYZ baseline algorithm (left), and the VMU baseline algorithm (right). 
+	Note that a SD threshold of 0.003g performs poorly as it is below the accelerometer noise level and is therefore not 
+	shown. See Figure S4 and S5 in the Supplementary Information for accuracy, precision, and recall scores.
 
-	# history file 
-	history_file = os.path.join(model_folder, cnn_type, f'cnn_{cnn_type}_{episode_window}.h5_history.csv')
-
-	# load dataframe
-	data = pd.read_csv(history_file, index_col = 0)
-
-	# add F1 results
-	data['F1'] = 2 * data['tp'] / (2 * data['tp'] + data['fp'] + data['fn'])
-	data['val_F1'] = 2 * data['val_tp'] / (2 * data['val_tp'] + data['val_fp'] + data['val_fn'])
-
-	# call plot function
-	plot_training_results_per_epoch(data)
-
-def process_plot_cnn_inferred_nw_time(hdf5_acc_file, hdf5_nw_file):
-
-	# v2_6_and_4_0.004_True_all_subjects
-	cnn_type = 'v2'
-	episode_window_sec = 6
-	start_stop_label_decision = 'and'
-	distance_in_min = 4
-	std_threshold = 0.004
-	edge_true_or_false = True
-
-	# group that contains data on inferred non-wear time
-	# inferred_nw_group = f'{cnn_type}_{episode_window_sec}_{start_stop_label_decision}_{distance_in_min}_{std_threshold}'
-	inferred_nw_group = f'{cnn_type}_{episode_window_sec}_{start_stop_label_decision}_{distance_in_min}_{std_threshold}_{edge_true_or_false}'
-
-	# subjects = ['90042823', '90086831','90173929','90233320','90301821','90341522','90446124','90486330','90489737','90902626','91008321','91845330',
-	# 			'92198837','92723932','92987439','90021214','90015722','90089632','90110920','90172019','90181524','90232925','90239124','90242017',
-	# 			'90287430','90319123','90345122','90359733','90389837','90413825','90423321','90537529','90681428','90923225','90925328','91643427',
-	# 			'92150421','92191527','93214322','93324223']
-
-	# get all the subjects from the hdf5 file (subjects are individuals who participated in the Tromso Study #7
-	subjects = get_all_subjects_hdf5(hdf5_file = hdf5_acc_file)
-
-	# exclude subjects that have issues with their data
-	subjects = [s for s in subjects if s not in get_subjects_with_invalid_data()]
-
-
-	for subject in subjects:
-
-		# read inferred non-wear time
-		inferred_nw_time = read_dataset_from_group(group_name = inferred_nw_group, dataset = subject, hdf5_file = hdf5_nw_file)
-
-		# read true non_wear time
-		true_nw_time = read_dataset_from_group(group_name = 'true_nw_time', dataset = subject, hdf5_file = hdf5_nw_file)
-		
-		# read actigraph raw data for subject
-		actigraph_acc, _, actigraph_time = get_actigraph_acc_data(subject, hdf5_file = hdf5_acc_file)
-
-		# combine all data into dataframe
-		data = pd.DataFrame(actigraph_acc, index = actigraph_time, columns = ['Y', 'X', 'Z'])
-
-		# add infered non wear time
-		data['INFERRED NW-TIME'] = inferred_nw_time
-		# add true non-wear time
-		data['TRUE NW-TIME'] = true_nw_time
-
-		plot_cnn_inferred_nw_time(subject, data)
-
-def process_plot_episodes_used_for_training(merged_episodes_folder, hdf5_acc_file, hz = 100, std_threshold = 0.004):
-
-	# read csv files in merged episodes folder
-	F = read_directory(merged_episodes_folder)
-
-	# list to hold plot data
-	plot_data = {'0' : [], '1' : []}
-
-	# define the length of the window in seconds
-	episode_window_sec = 20 * hz
-	# define how much of the flat line nees to be shown in the plot
-	show_flat_sec = 20 * hz
-
-	# loop over each file in F
-	for f in F[200:]:
-
-		if len(plot_data['0']) > 20 and len(plot_data['1']) > 20:
-			break
-
-		# extract subject from file
-		subject = re.search('[0-9]{8}', f)[0]
-
-		logging.info(f'=== Processing subject {subject} ===')
-
-		# read actigraph raw data for subject
-		actigraph_acc, *_ = get_actigraph_acc_data(subject, hdf5_file = hdf5_acc_file)
-
-		# read dataframe
-		df = pd.read_csv(f)
-
-		for _, row in df.iterrows():
-
-			start_index = row.loc['start_index']
-			stop_index = row.loc['stop_index']
-			label = row.loc['label']
-			
-			# forward search to extend stop index
-			stop_index = _forward_search_episode(actigraph_acc, stop_index, hz = hz, max_search_min = 5, std_threshold = std_threshold, verbose = False)
-			# backwar search to extend start index
-			start_index = _backward_search_episode(actigraph_acc, start_index, hz = hz, max_search_min = 5, std_threshold = std_threshold, verbose = False)
-
-			# get start episode
-			start_episode = actigraph_acc[start_index - episode_window_sec : start_index + show_flat_sec]
-			# get stop episode
-			stop_episode = actigraph_acc[stop_index - show_flat_sec: stop_index + episode_window_sec]
-			
-			# check if start_episode has the right shape
-			if start_episode.shape[0] == episode_window_sec + show_flat_sec:
-				if np.all(np.std(start_episode, axis = 0) > 0.1):
-					plot_data[f'{label}'].append((subject, start_episode))				
-			if stop_episode.shape[0] == episode_window_sec + show_flat_sec:
-				if np.all(np.std(stop_episode, axis = 0) > 0.1):
-					plot_data[f'{label}'].append((subject, stop_episode))
-
-	# plot the data
-	plot_episodes_used_for_training_combined(plot_data)
-	# plot_episodes_used_for_training(plot_data)
-
-def process_plot_baseline_performance(data_folder):
-
-	"""
-	Plot classification performance of baseline models
+	Parameters
+	------------
+	data_folder : os.path
+		folder location that contain the classification performance of the baseline algorithms. Note that before we have those files, 
+		the function 'batch_evaluate_baseline_models' needs to be executed first
+	plot_folder : os.path
+		folder location where to store the plots to
 	"""
 
-	# subfolders
-	subfolders = ['VMU', 'NO_VMU']
+	# subfolders for both baseline algorithms
+	subfolders = ['XYZ', 'VMU']
 
+	# keep track of baseline F1 scores so we can also plot those side by side
+	baseline_f1 = {x : None for x in subfolders}
+
+	# only use the following metrics
+	performance_metrics = ['accuracy', 'precision', 'recall', 'f1']
+	# standard deviation range
+	std_threshold_range = [0.004, 0.005, 0.006, 0.007]
+	# episode length
+	episode_length_range = [15, 30, 45, 60, 75, 90, 105, 120]
+	
+	# create plot for each baseline
 	for subfolder in subfolders:
 
-		performance_metrics = ['accuracy', 'precision', 'recall', 'f1']
-		# standard deviation range
-		std_threshold_range = [0.003, 0.004, 0.005, 0.006, 0.007]
-		# episode length
-		episode_length_range = [15, 30, 45, 60, 75, 90, 105, 120]
 		# create dictionary with metrics and dataframe to populate data to
 		plot_data = {x : pd.DataFrame(columns = episode_length_range, index = std_threshold_range) for x in performance_metrics}
 
-		# get all files that contain classification performance of all subjects
+		# get all files that contain classification performance of all subjects (note the we filter for the file name that contains 'all' since 
+		# this file contains the combined performance metrics of all subjects)
 		for f in [x for x in read_directory(os.path.join(data_folder, subfolder)) if 'all' in x]:
 
 			# extract std threshold from fil ename
@@ -1065,21 +1203,158 @@ def process_plot_baseline_performance(data_folder):
 							# populate correct dataframe (based on row, column combination)
 							plot_data[key].at[std_threshold, episode_length] = value
 		
-		plot_baseline_performance(plot_data, plot_name = subfolder)
+		# call plot function to create the heatmap for baseline algorithm
+		plot_baseline_performance(plot_data, plot_name = subfolder, plot_folder = plot_folder)
 
-def process_plot_performance_cnn_nw_method(data_folder):
+		# save F1 scores
+		baseline_f1[subfolder] = plot_data['f1']
+	
+	# call plot function to create a heatmap of only the F1 scores and combine both baseline algorithms on the same
+	plot_baseline_performance_compare_f1(plot_data = baseline_f1, plot_name = 'baseline_comparison_f1.pdf', plot_folder = plot_folder)
+
+def process_plot_overview_all_raw_nw_methods(cnn_csv_folder, cnn_type, episode_window, baseline_files, hees_files, plot_folder):
 	"""
-	Plot the performance of the nw time algortihm that uses the cnn classification model
+	Plot barchart to show the classification results of baselines methods, hees method, and the CNN method
+
+	[FIGURE 5] A comparison of the classification performance metrics of the best performing baseline models XYZ_90 
+	(i.e. calculating the standard deviation of the three individual axes and an interval length of 90 minutes), 
+	VMU_105 (i.e. calculating the standard deviation of the VMU and an interval length of 105 minutes), the HEES_30 
+	algorithm with a 30 minutes interval, the HEES_60 with a 60 minutes interval, the HEES_135 with tuned hyperparameters 
+	and a 135 minutes interval, and the proposed CNN algorithm. Error bars represent the 95% confidence interval.
+
+	Parameters
+	-----------
+	cnn_csv_folder : os.path
+		folder location that contains the classification results of the cnn model (here we extract the best scores from)
+	cnn_type : string
+		the cnn architecture to use here, can be v1, v2, v3 or v4 (the best one is v2)
+	episode_window : int
+		length of the window from where we extracted preceding and following segments. Best is 3 seconds with the v2 CNN model
+	baseline_files : os.path
+		folder location where the baseline classification results are stored
+	hees_files : os.path
+		folder location where the hees classification results are stored
+	plot_folder : os.path
+		folder location where to save the plot to
 	"""
 
-	performance_metrics = ['accuracy', 'precision', 'recall', 'f1']
+	# dictionary to store all data
+	data = {}
+
+	"""
+		OBTAIN PERFORMANCE OF BEST CNN MODEL
+	"""
+	cnn_classification_file = os.path.join(cnn_csv_folder, f'performance_cnn_{cnn_type}_{episode_window}_parameters.csv')
+	# read csv file as pandas dataframe
+	cnn_data = pd.read_csv(cnn_classification_file, index_col = 0)
+	# sort by f1 score and take top score
+	cnn_data = cnn_data.sort_values(by=['f1'], ascending = False).iloc[0]
+	# add to dictionary
+	data['cnn'] = {	'distance_in_min' : cnn_data.loc['distance_in_min'],
+					'start_stop_label_decision' : cnn_data.loc['start_stop_label_decision'],
+					'edge_true_or_false' : cnn_data.loc['edge_true_or_false'],
+					'accuracy' : cnn_data.loc['accuracy'],
+					'precision' : cnn_data.loc['precision'],
+					'recall' : cnn_data.loc['recall'],
+					'f1' : cnn_data.loc['f1']
+					}
+	logging.info(f"CNN top F1 : {data['cnn']['f1']}")
+
+	"""
+		OBTAIN HEES SCORES
+	"""
+	for f in read_directory(hees_files):
+		
+		# load file via pickle
+		f_data = load_pickle(file_name = f)
+		
+		for key, value in f_data.items():
+
+			# unpack key into variables (e.g. 135-1-8-2-1-1)
+			mw, wo, st, sa, vt, va = key.split('-')
+			
+			data[f'hees_{mw}'] = {	'f1' : value['f1'],
+									'precision' :  value['precision'],
+									'recall' : value['recall'],
+									'mw' : mw, 
+									'wo' : wo, 
+									'st' : st, 
+									'sa' : sa, 
+									'vt' : vt, 
+									'va' : va}
+
+			logging.info(f'Hees minimum window {mw} F1 : {value["f1"]}')
+	"""
+		OBTAIN BASELINE SCORES
+	"""
+	# obtain highest F1 score for baseline model without VMU
+	for subfolder in ['VMU', 'NO_VMU']:	
+
+		# keep track of highest f1 score
+		top_f1 = 0
+		top_f1_precision, top_f1_recall = 0, 0
+		top_std = 0
+		top_episode = 0
+
+		for f in [x for x in read_directory(os.path.join(baseline_files, subfolder)) if 'all' in x]:
+
+			# load file as dataframe, and take first columns, which makes it a seriers
+			f_data = pd.read_csv(f, index_col = 0)['0']
+
+			# get the F1 score
+			f1_score = f_data.loc['f1']
+			
+			# update top score only if F1 is higher
+			if f1_score > top_f1:
+				top_f1 = f1_score
+				top_f1_precision, top_f1_recall = f_data.loc['precision'], f_data.loc['recall']
+				top_std = float(f.split(os.sep)[-1].split('_')[0])
+				top_episode = int(f.split(os.sep)[-1].split('_')[1]) 
+		
+		logging.info(f'Top baseline {subfolder}: F1 : {top_f1}, std : {top_std}, episode : {top_episode}')
+		
+		# add to dictionary
+		data[subfolder.lower()] = {	'f1' : top_f1,
+											'precision' : top_f1_precision,
+											'recall' : top_f1_recall, 
+											'std' : top_std, 
+											'episode' : top_episode}
+
+	# create bar chart with F1 classification scores side by side
+	plot_overview_all_raw_nw_methods(plot_data = data, plot_name = 'overview_all_raw_nw_methods.pdf', plot_folder = plot_folder)
+
+def process_create_table_performance_cnn_nw_method(data_folder, cnn_type, episode_window, save_folder):
+	"""
+	Create a table to show the classification performance of the CNN method when using different hyperparameter settings.
+
+	[Table 1] The classification of accuracy, precision, recall, and F1 performance metrics when applying the new algorithm on 
+	50% of the available data (n = 291/583) while exploring 20 combinations of hyperparameter values; 95% confidence intervals 
+	are shown between parentheses. Merge (mins) = the merging of neighbouring candidate non-wear episodes to handle artificial 
+	movement. Logical operator = ‘AND’ if both start and stop segments or ‘OR’ if only one side of a candidate non-wear episode 
+	needs to be classified as true non-wear time to subsequently classify the candidate non-wear episode as an episode of 
+	true non-wear time. Edge default = the default classification of a candidate non-wear episode that has no start or end 
+	segment, such cases that occur right at the beginning or end of the acceleration data and default to wear or non-wear time.
+
+	Parameters
+	-----------
+	data_folder : os.path
+		folder location that contains the classification performance of different hyperparameter values. Note that these files are
+		created when calling the function 'calculate_cnn_classification_performance'
+	cnn_type : string
+		the cnn architecture to use here, can be v1, v2, v3 or v4 (the best one is v2)
+	episode_window : int
+		length of the window from where we extracted preceding and following segments. Best is 3 seconds with the v2 CNN model
+	save_folder : os.path
+		folder location where to store the table to
+	"""
 
 	# read files in folder
-	F = [x for x in read_directory(data_folder) if 'all' in x]
+	F = [x for x in read_directory(os.path.join(data_folder, f'{cnn_type}_{episode_window}')) if 'all' in x]
 
 	# empty dataframe
-	df = pd.DataFrame()#index = performance_metrics)
+	df = pd.DataFrame()
 	
+	# loop over each file
 	for f in F:
 
 		# extract variables from file name
@@ -1087,24 +1362,71 @@ def process_plot_performance_cnn_nw_method(data_folder):
 		
 		# read data as series
 		f_data = pd.read_csv(f, index_col = 0)['0']
+		# add relevant data to series
 		f_data['cnn_type'] = cnn_type
 		f_data['episode_window_sec'] = episode_window_sec
 		f_data['start_stop_label_decision'] = start_stop_label_decision
 		f_data['distance_in_min'] = distance_in_min
 		f_data['std_threshold'] = std_threshold
-		f_data['edge_true_or_false'] = edge_true_or_false
+		f_data['edge_true_or_false'] = 'nw time' if eval(edge_true_or_false) else 'wear time'
 
-		edge_true_or_false = 'nw time' if eval(edge_true_or_false) else 'wear time'
-
+		# add seriers to dataframe
 		df[f'{start_stop_label_decision.upper()}, {distance_in_min} min, {edge_true_or_false}'] = f_data
 	
-	# transpose dataframe
+	# transpose dataframe and sort columns by index
 	df = df.T.sort_index()
-
-	print(df)
-	# # call plot function
-	# plot_performance_cnn_nw_method(df)
+	# only select certain columns
+	df_filtered = df[['distance_in_min', 'start_stop_label_decision', 'edge_true_or_false', 'accuracy', 'precision', 'recall', 'f1']]
+	# sort on f1 score
+	df_filtered = df_filtered.sort_values(by=['f1'], ascending = False)
+	# save as CSV
+	df_filtered.to_csv(os.path.join(save_folder, f'performance_cnn_{cnn_type}_{episode_window}_parameters.csv'))
 	
+def process_plot_cnn_training_results_per_epoch(model_folder, episode_window, cnn_type, plot_folder):
+	"""
+	Create a line chart with the training and validation details per epoch. The details are stored within a history file when we created the CNN model.
+	Typically, the metrics callback when creating the cnn model defines what training and validation details we have.  These are defined in the functions.dl_functions.py file.
+	A copy is presented here
+
+		METRICS = [
+		keras.metrics.TruePositives(name='tp'),
+		keras.metrics.FalsePositives(name='fp'),
+		keras.metrics.TrueNegatives(name='tn'),
+		keras.metrics.FalseNegatives(name='fn'), 
+		keras.metrics.BinaryAccuracy(name='accuracy'),
+		keras.metrics.Precision(name='precision'),
+		keras.metrics.Recall(name='recall'),
+		keras.metrics.AUC(name='auc'),
+
+	See also Figure S3 of the supplementary material for paper::
+		A novel algorithm to detect non-wear time from raw accelerometer data using convolutional neural networks
+
+	Paramaters
+	-----------
+	model_folder : os.path
+		folder location where the CNN models are stored (within this folder, we have also saved the history file that contains the metrics per epoch)
+		if you have saved this somewhere else, then use this folder here.
+	episode_window: int
+		the length of the window/episode (there are different CNN models that used different window lenghts, here we can choose from which CNN model we want to plot the history from)
+	cnn_type : string
+		the cnn architecture for which we want to plot the history data per epoch
+	plot_folder : os.path
+		folder location where the plot should be saved to
+	"""
+
+	# history file (contains the data per epoch)
+	# note that we dynamically create the file location for the specific cnn architecture and episode window
+	history_file = os.path.join(model_folder, cnn_type, f'cnn_{cnn_type}_{episode_window}.h5_history.csv')
+
+	# load CSV file as pandas dataframe
+	data = pd.read_csv(history_file, index_col = 0)
+
+	# add F1 results (since we did not calculate them when we created the CNN model)
+	data['F1'] = 2 * data['tp'] / (2 * data['tp'] + data['fp'] + data['fn'])
+	data['val_F1'] = 2 * data['val_tp'] / (2 * data['val_tp'] + data['val_fp'] + data['val_fn'])
+
+	# call plot function to plot the line chart
+	plot_training_results_per_epoch(data = data, plot_name = f'epoch_results_cnn_{cnn_type}_{episode_window}', plot_folder = plot_folder)
 
 """
 	INTERNAL HELPER FUNCTION
@@ -1238,7 +1560,7 @@ def _backward_search_episode(acc_data, index, hz = 100, max_search_min = 5, std_
 		logging.info(f'New index : {index}, number of loops : {i}')
 	return index
 
-def _calculate_confusion_matrix(key, values, hz = 100):
+def _calculate_confusion_matrix(key, values, hz = 100, verbose = False):
 
 	# unpack y and y_hat
 	y = values['y']
@@ -1251,7 +1573,8 @@ def _calculate_confusion_matrix(key, values, hz = 100):
 	# get confusion matrix values
 	tn, fp, fn, tp = get_confusion_matrix(y, y_hat, labels = [0,1]).ravel()
 
-	logging.debug('tn: {}, fp: {}, fn: {}, tp: {}'.format(tn, fp, fn, tp))
+	if verbose:
+		logging.debug('tn: {}, fp: {}, fn: {}, tp: {}'.format(tn, fp, fn, tp))
 
 	return key, {'tn': tn, 'fp' : fp, 'fn' : fn, 'tp' : tp}
 
@@ -1326,7 +1649,7 @@ if __name__ == '__main__':
 	tic, process, logging = set_start()
 
 	# define environement
-	env = 'local' if os.uname().nodename == 'shaheenmbp2' else 'server'
+	env = 'local'
 	
 	# location of hdf5 files
 	if env == 'local':
@@ -1341,6 +1664,8 @@ if __name__ == '__main__':
 		merged_episodes_folder = os.path.join('labels', 'start_stop_all_grouped')
 		# location with cnn nw time classification results
 		cnn_nw_classification_folder = os.path.join('files', 'cnn_nw_performance')
+		# location where to save the plots to
+		plot_folder = os.path.join('plots', 'Paper2')
 	
 	elif env == 'server':
 
@@ -1364,57 +1689,60 @@ if __name__ == '__main__':
 	"""
 
 	# 1a) merge episodes that are close to each other
-	# merge_close_episodes_from_training_data(read_folder = episodes_folder, save_folder = merged_episodes_folder)
+	merge_close_episodes_from_training_data(read_folder = episodes_folder, save_folder = merged_episodes_folder)
 
 	# 1b) calculate true non-wear time from labeled episodes
-	# process_calculate_true_nw_time_from_labeled_episodes(merged_episodes_folder = merged_episodes_folder, hdf5_read_file = actiwave_actigraph_mapping_hdf5_file, hdf5_save_file = nw_time_hdf5_file )
+	process_calculate_true_nw_time_from_labeled_episodes(merged_episodes_folder = merged_episodes_folder, hdf5_read_file = actiwave_actigraph_mapping_hdf5_file, hdf5_save_file = nw_time_hdf5_file )
 
 	# 1c) plot episodes, both normal and grouped
-	# process_plot_merged_episodes(episodes_folder = episodes_folder, grouped_episodes_folder = merged_episodes_folder, hdf5_file = actiwave_actigraph_mapping_hdf5_file)
+	process_plot_merged_episodes(episodes_folder = episodes_folder, grouped_episodes_folder = merged_episodes_folder, hdf5_file = actiwave_actigraph_mapping_hdf5_file)
 
 	"""
 		2) PERFORM GRID SEARCH FOR DIFFERENT SIZED FEATURE WINDOWS
 	"""
 
 	# 2) create cnn model with grid search
-	# perform_grid_search_1d_cnn(	label_folder = merged_episodes_folder, \
-	# 							hdf5_read_file = actiwave_actigraph_mapping_hdf5_file, \
-	# 							save_data_location = os.path.join(os.sep, 'users', 'shaheensyed', 'hdf5', 'start_stop_data'),\
-	# 							save_model_folder = os.path.join('files', 'models', 'nw', 'cnn1d'),\
-	# 							file_limit = None)
+	perform_grid_search_1d_cnn(	label_folder = merged_episodes_folder, \
+								hdf5_read_file = actiwave_actigraph_mapping_hdf5_file, \
+								save_data_location = os.path.join(os.sep, 'users', 'shaheensyed', 'hdf5', 'start_stop_data'),\
+								save_model_folder = os.path.join('files', 'models', 'nw', 'cnn1d_60_20_20_early_stopping'),\
+								file_limit = None)
 
 	"""
 		3) CREATE NON-WEAR TIME BY USING CNN MODEL
 	"""
-	# batch_process_get_nw_time_from_raw(hdf5_acc_file = actiwave_actigraph_mapping_hdf5_file, hdf5_nw_file = nw_time_hdf5_file)
+	batch_process_get_nw_time_from_raw(hdf5_acc_file = actiwave_actigraph_mapping_hdf5_file, hdf5_nw_file = nw_time_hdf5_file)
 
 	"""
 		4) CALCULATE CLASSIFICATION PERFORMANCE CNN MODEL COMPARED TO TRUE NON-WEAR TIME
 	"""
-	# calculate_cnn_classification_performance(hdf5_read_file = nw_time_hdf5_file)
+	calculate_cnn_classification_performance(hdf5_read_file = nw_time_hdf5_file)
 
 	"""
 		5) EVALUATE BASELINE MODELS
 	"""
-	# batch_evaluate_baseline_models(hdf5_acc_file = actiwave_actigraph_mapping_hdf5_file, hdf5_nw_file = nw_time_hdf5_file)
+	batch_evaluate_baseline_models(hdf5_acc_file = actiwave_actigraph_mapping_hdf5_file, hdf5_nw_file = nw_time_hdf5_file)
 	
 	"""
-		5) PAPER PLOTS
+		6) PAPER PLOTS
 	"""
-	# process_plot_cnn_classification_performance(model_folder = os.path.join('files', 'models', 'nw', 'cnn1d'))
+	# Fig. 1 : Start or the stop segments of candidate non-wear episodes where features of a length of 2-10 seconds were extracted
+	process_plot_start_stop_segments(merged_episodes_folder = merged_episodes_folder, hdf5_acc_file = actiwave_actigraph_mapping_hdf5_file, plot_folder = plot_folder)
 
-	# process_plot_cnn_training_results_per_epoch(model_folder = os.path.join('files', 'models', 'nw', 'cnn1d'), cnn_type = 'v2', episode_window = 6)
+	# Fig. 3 : Accuracy, precision, recall, and F1 performance metrics for training data (60%), validation data (20%), and test data (20%) for the four architectures evaluated. 
+	process_plot_cnn_classification_performance(model_folder = os.path.join('files', 'models', 'nw', 'cnn1d_60_20_20_early_stopping'), plot_folder = plot_folder)
 
-	# process_plot_cnn_inferred_nw_time(hdf5_acc_file = actiwave_actigraph_mapping_hdf5_file, hdf5_nw_file = nw_time_hdf5_file)
+	# Fig 4, Fig S4, and Fig S5: Heatmaps to show the classification performance of the baseline algorithms
+	process_plot_baseline_performance(data_folder = os.path.join('files', 'baseline_performance'), plot_folder = plot_folder)
 
-	# plot wear and nw-time episodes used for training
-	# process_plot_episodes_used_for_training(merged_episodes_folder, actiwave_actigraph_mapping_hdf5_file)
+	# Fig 5:  plot overview of all methods (cnn method, baseline method with and without VMU, and hees default and optimized)
+	process_plot_overview_all_raw_nw_methods(cnn_csv_folder = plot_folder, cnn_type = 'v2', episode_window = 3, baseline_files = os.path.join('files', 'baseline_performance'), hees_files = os.path.join('files', 'grid-search-hees_original'), plot_folder = plot_folder)
 
-	# plot baseline performance
-	# process_plot_baseline_performance(data_folder = os.path.join('files', 'baseline_performance'))
+	# Table 1 : Create a table to show the classification performance of the cnn nw method with different hyperparameter values
+	process_create_table_performance_cnn_nw_method(data_folder = cnn_nw_classification_folder, cnn_type = 'v2', episode_window = 3, save_folder = plot_folder)
 
-	# plot the performance of the new cnn nw-time algorithm
-	# process_plot_performance_cnn_nw_method(data_folder = cnn_nw_classification_folder)
+	# Fig S3: Create a line chart that shows the training and validation loss per epoch, including other metrics calculated during training
+	process_plot_cnn_training_results_per_epoch(model_folder = os.path.join('files', 'models', 'nw', 'cnn1d_60_20_20_early_stopping'), cnn_type = 'v2', episode_window = 3, plot_folder = plot_folder)
 
 	set_end(tic,process)
 

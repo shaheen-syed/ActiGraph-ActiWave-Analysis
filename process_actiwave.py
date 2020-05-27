@@ -2441,7 +2441,7 @@ if __name__ == "__main__":
 	"""
 
 	# plot classification results from all participants for four non wear algorithms
-	process_plot_classification_results()
+	# process_plot_classification_results()
 	
 	# plot time distribution of data
 	# process_plot_time_distribution()

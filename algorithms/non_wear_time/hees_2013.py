@@ -31,7 +31,7 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		basically the sliding window that progresses over the acceleration data. Defaults to 15 minutes.
 	std_mg_threshold : float (optional)
 		standard deviation in milli g threshold. Acceleration axes values below or equal this threshold can be considered non-wear time. Defaults to 3.0g, this will be converted to mg
-	std_min_num_axes : int (optional)
+	std_min_num_axes : int (optional) 
 		minimum numer of axes used to check if acceleration values are below the std_mg_threshold value. Defaults to 2 axes; meaning that at least 2 axes need to have values below a threshold value to be considered non wear time
 	value_range_mg_threshold : float (optional)
 		value range threshold value in mg. If the range of values within a window is below this threshold (meaning that there is very little change in acceleration over time) then this can be considered non wear time. Default to 50 mg
@@ -82,7 +82,8 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		# check if the standard deviation is below the threshold, and if the number of axes the standard deviation is below equals the std_min_num_axes threshold
 		if (std < std_mg_threshold).sum() >= std_min_num_axes:
 
-			# at least 'std_min_num_axes' are below the standard deviation threshold of 'std_min_num_axes', now set the slice to 1 indicating non-wear time
+			# at least 'std_min_num_axes' are below the standard deviation threshold of 'std_min_num_axes', now set the slice to 0 indicating non-wear time 
+			# Note that the full array starts with all ones, we only have to set the non-wear time to zero
 			non_wear_vector[start:end] = 0
 
 		# calculate the value range (difference between the min and max) (here the point-to-point numpy method is used) for each column
@@ -92,6 +93,7 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		if (value_range < value_range_mg_threshold).sum() >= value_range_min_num_axes:
 
 			# set the non wear vector to non-wear time for the start to end slice of the data
+			# Note that the full array starts with all ones, we only have to set the non-wear time to zero
 			non_wear_vector[start:end] = 0
 
 	return non_wear_vector
