@@ -23,18 +23,21 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 	data: np.array(n_samples, axes)
 		numpy array with acceleration data in g values. Each column represent a different axis, normally ordered YXZ
 	hz: int (optional)
-		sample frequency in hertz. Indicates the number of samples per 1 second. Default to 100 for 100hz. The sample frequency is necessary to know how many samples there are in a specific window.
-		So let's say we have a window of 15 minutes, then there are hz * 60 * 15 samples
+		sample frequency in hertz. Indicates the number of samples per 1 second. Default to 100 for 100hz. The sample frequency is necessary to 
+		know how many samples there are in a specific window. So let's say we have a window of 15 minutes, then there are hz * 60 * 15 samples
 	min_non_wear_time_window : int (optional)
 		minimum window length in minutes to be classified as non-wear time
 	window_overlap : int (optional)
 		basically the sliding window that progresses over the acceleration data. Defaults to 15 minutes.
 	std_mg_threshold : float (optional)
-		standard deviation in milli g threshold. Acceleration axes values below or equal this threshold can be considered non-wear time. Defaults to 3.0g, this will be converted to mg
+		standard deviation threshold in mg. Acceleration axes values below or equal this threshold can be considered non-wear time. Defaults to 3.0g. 
+		Note that within the code we convert mg to g.
 	std_min_num_axes : int (optional) 
-		minimum numer of axes used to check if acceleration values are below the std_mg_threshold value. Defaults to 2 axes; meaning that at least 2 axes need to have values below a threshold value to be considered non wear time
+		minimum numer of axes used to check if acceleration values are below the std_mg_threshold value. Defaults to 2 axes; meaning that at least 2 
+		axes need to have values below a threshold value to be considered non wear time
 	value_range_mg_threshold : float (optional)
-		value range threshold value in mg. If the range of values within a window is below this threshold (meaning that there is very little change in acceleration over time) then this can be considered non wear time. Default to 50 mg
+		value range threshold value in mg. If the range of values within a window is below this threshold (meaning that there is very little change 
+		in acceleration over time) then this can be considered non wear time. Default to 50 mg. Note that within the code we convert mg to g
 	value_range_min_num_axes : int (optional)
 		minimum numer of axes used to check if acceleration values range are below the value_range_mg_threshold value. Defaults to 2 axes; meaning that at least 2 axes need to have a value range below a threshold value to be considered non wear time
 
@@ -44,7 +47,6 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		numpy array with non wear time encoded as 0, and wear time encoded as 1.
 	"""
 
-
 	# number of data samples in 1 minute
 	num_samples_per_min = hz * 60
 
@@ -52,12 +54,13 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 	min_non_wear_time_window *= num_samples_per_min
 	window_overlap *= num_samples_per_min
 
-	# convert the standard deviation threshold from g to mg
+	# convert the standard deviation threshold from mg to g
 	std_mg_threshold /= 1000
-	# convert the value range thresholf from g to mg
+	# convert the value range threshold from mg to g
 	value_range_mg_threshold /= 1000
 
-	# new array to record non-wear time. Convention is 0 = non-wear time, and 1 is wear time. Since we create a ones array, we only have to deal with non-wear time, since everything else is already wear-time
+	# new array to record non-wear time. Convention is 0 = non-wear time, and 1 = wear time. Since we create a new array filled with ones, we only have to 
+	# deal with non-wear time (0), since everything else is already encoded as wear-time (1)
 	non_wear_vector = np.ones((data.shape[0], 1), dtype = 'uint8')
 
 	# loop over the data, start from the beginning with a step size of window overlap
@@ -82,8 +85,8 @@ def hees_2013_calculate_non_wear_time(data, hz = 100, min_non_wear_time_window =
 		# check if the standard deviation is below the threshold, and if the number of axes the standard deviation is below equals the std_min_num_axes threshold
 		if (std < std_mg_threshold).sum() >= std_min_num_axes:
 
-			# at least 'std_min_num_axes' are below the standard deviation threshold of 'std_min_num_axes', now set the slice to 0 indicating non-wear time 
-			# Note that the full array starts with all ones, we only have to set the non-wear time to zero
+			# at least 'std_min_num_axes' are below the standard deviation threshold of 'std_min_num_axes', now set this subset of the data to 0 which will 
+			# record it as non-wear time. Note that the full 'new_wear_vector' is pre-populated with all ones, so we only have to set the non-wear time to zero
 			non_wear_vector[start:end] = 0
 
 		# calculate the value range (difference between the min and max) (here the point-to-point numpy method is used) for each column
